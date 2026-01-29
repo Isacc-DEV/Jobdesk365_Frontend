@@ -14,8 +14,10 @@ const tabs = [
 const normalizeEmailStatus = (status, fallbackConnected) => {
   if (!status) return fallbackConnected ? "connected" : "not_connected";
   const normalized = String(status).toLowerCase();
-  if (normalized === "expired") return "expired";
-  if (normalized === "connected") return "connected";
+  if (normalized === "active" || normalized === "connected") return "connected";
+  if (normalized === "expired" || normalized === "revoked" || normalized === "error") {
+    return "expired";
+  }
   return "not_connected";
 };
 
@@ -35,46 +37,64 @@ const buildBaseInfoForm = (profile) => {
   const raw = profile?.raw || {};
   const baseInfo = raw.base_info || raw.baseInfo || {};
   return {
+    prefix: baseInfo.prefix || baseInfo.name_prefix || "",
     firstName: baseInfo.first_name || baseInfo.firstName || "",
     lastName: baseInfo.last_name || baseInfo.lastName || "",
     desiredSalary: baseInfo.desired_annual_salary || baseInfo.desiredAnnualSalary || "",
+    currentSalary: baseInfo.current_salary || baseInfo.currentSalary || "",
+    noticePeriod: baseInfo.notice_period || baseInfo.noticePeriod || "",
     currency: baseInfo.currency || "USD",
     email: baseInfo.email || profile?.email || "",
+    password: baseInfo.password || baseInfo.profile_password || "",
     phoneCountryCode: baseInfo.phone_country_code || baseInfo.phoneCountryCode || "",
     phoneNumber: baseInfo.phone_number || baseInfo.phoneNumber || "",
     city: baseInfo.city || "",
     state: baseInfo.state || "",
     country: baseInfo.country || "",
+    nationality: baseInfo.nationality || "",
+    gender: baseInfo.gender || "",
     postalCode: baseInfo.postal_code || baseInfo.postalCode || "",
     linkedInUrl: baseInfo.linkedin_url || baseInfo.linkedinUrl || "",
-    authorizedToWork: Boolean(baseInfo.authorized_to_work || baseInfo.authorizedToWork || false),
-    needsSponsorship: Boolean(baseInfo.needs_sponsorship || baseInfo.needsSponsorship || false),
-    highestDegree: baseInfo.highest_degree || baseInfo.highestDegree || "",
-    school: baseInfo.school || "",
-    field: baseInfo.field || "",
-    graduationYear: baseInfo.graduation_year || baseInfo.graduationYear || ""
+    raceEthnicity: baseInfo.race_ethnicity || baseInfo.raceEthnicity || "",
+    sexualOrientation: baseInfo.sexual_orientation || baseInfo.sexualOrientation || "",
+    disabilityStatus: baseInfo.disability_status || baseInfo.disabilityStatus || "",
+    veteranStatus: baseInfo.veteran_status || baseInfo.veteranStatus || ""
   };
 };
 
 const normalizeExperience = (exp) => {
   const endDate = exp?.end_date || exp?.endDate || "";
   const isPresent = exp?.isPresent || String(endDate).toLowerCase() === "present";
+  const bulletsValue = exp?.bullets ?? exp?.bullet_points ?? exp?.bulletPoints ?? "";
+  const bullets = Array.isArray(bulletsValue)
+    ? bulletsValue.filter(Boolean).join("\n")
+    : bulletsValue || "";
   return {
     id: exp?.id || `exp-${Date.now()}-${Math.random().toString(16).slice(2)}`,
-    companyName: exp?.company_name || exp?.companyName || "",
-    roleTitle: exp?.role_title || exp?.roleTitle || "",
-    employmentType: exp?.employment_type || exp?.employmentType || "",
-    startDate: exp?.start_date || exp?.startDate || "",
+    companyName: exp?.companyTitle || exp?.company_name || exp?.companyName || "",
+    roleTitle: exp?.roleTitle || exp?.role_title || "",
+    employmentType: exp?.employmentType || exp?.employment_type || "",
+    location: exp?.location || exp?.location_text || exp?.locationText || "",
+    startDate: exp?.startDate || exp?.start_date || "",
     endDate: isPresent ? "Present" : endDate,
     isPresent,
-    bullets: exp?.bullets || exp?.bullet_points || ""
+    bullets
   };
 };
 
 const buildResumeForm = (profile) => {
   const raw = profile?.raw || {};
   const resume = raw.base_resume || raw.baseResume || {};
-  const skillsValue = resume.skills || resume.skill || [];
+  const profileBlock = resume.Profile || resume.profile || {};
+  const contactBlock = profileBlock.contact || resume.contact || {};
+  const summaryValue =
+    resume.summary?.text || resume.summary?.summary || resume.summary || "";
+  const skillsValue =
+    resume.skills?.raw ||
+    resume.skills?.skills ||
+    resume.skills ||
+    resume.skill ||
+    [];
   const skills = Array.isArray(skillsValue)
     ? skillsValue.filter(Boolean)
     : typeof skillsValue === "string"
@@ -83,15 +103,92 @@ const buildResumeForm = (profile) => {
         .map((value) => value.trim())
         .filter(Boolean)
     : [];
-  const experienceItems = Array.isArray(resume.work_experience || resume.workExperience)
-    ? resume.work_experience || resume.workExperience
-    : [];
+  const experienceSource =
+    resume.workExperience || resume.work_experience || resume.workExperience || resume.experience || [];
+  const experienceItems = Array.isArray(experienceSource) ? experienceSource : [];
   return {
-    headline: resume.headline || "",
-    summary: resume.summary || "",
+    name: profileBlock.name || resume.name || resume.full_name || resume.fullName || "",
+    location: contactBlock.location || resume.location || resume.location_text || resume.locationText || "",
+    email: contactBlock.email || resume.email || "",
+    phone: contactBlock.phone || resume.phone || resume.phone_number || resume.phoneNumber || "",
+    linkedin: contactBlock.linkedin || resume.linkedin || resume.linkedin_url || resume.linkedinUrl || "",
+    headline: profileBlock.headline || resume.headline || "",
+    summary: summaryValue,
     skills,
     experience: experienceItems.map(normalizeExperience)
   };
+};
+
+const buildResumeExport = (form) => {
+  const skills = Array.isArray(form.skills) ? form.skills.filter(Boolean) : [];
+  const experienceItems = Array.isArray(form.experience) ? form.experience : [];
+  const workExperience = experienceItems.map((exp) => {
+    const bullets = typeof exp.bullets === "string"
+      ? exp.bullets
+          .split("\n")
+          .map((value) => value.trim())
+          .filter((value) => value.length > 0)
+      : Array.isArray(exp.bullets)
+      ? exp.bullets.filter(Boolean)
+      : [];
+    return {
+      companyTitle: exp.companyName || "",
+      roleTitle: exp.roleTitle || "",
+      employmentType: exp.employmentType || "",
+      location: exp.location || "",
+      startDate: exp.startDate || "",
+      endDate: exp.isPresent ? "Present" : exp.endDate || "",
+      bullets: bullets.length ? bullets : [""]
+    };
+  });
+
+  return {
+    Profile: {
+      name: form.name || "",
+      headline: form.headline || "",
+      contact: {
+        location: form.location || "",
+        email: form.email || "",
+        phone: form.phone || "",
+        linkedin: form.linkedin || ""
+      }
+    },
+    summary: { text: form.summary || "" },
+    workExperience: workExperience.length ? workExperience : [
+      {
+        companyTitle: "",
+        roleTitle: "",
+        employmentType: "",
+        location: "",
+        startDate: "",
+        endDate: "",
+        bullets: [""]
+      }
+    ],
+    education: [
+      {
+        institution: "",
+        degree: "",
+        field: "",
+        date: "",
+        coursework: [""]
+      }
+    ],
+    skills: { raw: skills.length ? skills : [""] }
+  };
+};
+
+const downloadJson = (filename, data) => {
+  if (typeof document === "undefined") return;
+  const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(url);
 };
 
 const ProfileDetailPanel = ({
@@ -101,7 +198,9 @@ const ProfileDetailPanel = ({
   bidders = [],
   onSaveProfile,
   onSaveBaseInfo,
-  onSaveBaseResume
+  onSaveBaseResume,
+  onConnectEmail,
+  emailConnecting = false
 }) => {
   const [activeTab, setActiveTab] = useState("profile");
   const [dirtyTabs, setDirtyTabs] = useState({
@@ -241,6 +340,33 @@ const ProfileDetailPanel = ({
       ? "Connect"
       : null;
 
+  const handleConnectEmail = () => {
+    if (profile?.id) {
+      onConnectEmail?.(profile.id);
+    }
+  };
+
+  const handleImportBaseInfo = (data) => {
+    const normalized = buildBaseInfoForm({ raw: { base_info: data, baseInfo: data } });
+    setBaseInfoForm(normalized);
+    markDirty("baseInfo");
+  };
+
+  const handleExportBaseInfo = () => {
+    downloadJson(`base-info-${profile?.id || "profile"}.json`, baseInfoForm);
+  };
+
+  const handleImportBaseResume = (data) => {
+    const normalized = buildResumeForm({ raw: { base_resume: data, baseResume: data } });
+    setResumeForm(normalized);
+    setSkillsInput("");
+    markDirty("baseResume");
+  };
+
+  const handleExportBaseResume = () => {
+    downloadJson(`base-resume-${profile?.id || "profile"}.json`, buildResumeExport(resumeForm));
+  };
+
   const panel = (
     <aside
       aria-hidden={!open}
@@ -311,11 +437,15 @@ const ProfileDetailPanel = ({
                 bidderOptions={bidderOptions}
                 emailStatusLabel={emailStatusLabel}
                 emailActionLabel={emailActionLabel}
+                onConnectEmail={handleConnectEmail}
+                emailConnecting={emailConnecting}
               />
               <ProfileDetailBaseInfoTab
                 visible={activeTab === "baseInfo"}
                 baseInfoForm={baseInfoForm}
                 updateBaseInfoForm={updateBaseInfoForm}
+                onImportJson={handleImportBaseInfo}
+                onExportJson={handleExportBaseInfo}
               />
               <ProfileDetailBaseResumeTab
                 visible={activeTab === "baseResume"}
@@ -328,6 +458,8 @@ const ProfileDetailPanel = ({
                 removeExperience={removeExperience}
                 updateExperience={updateExperience}
                 updateResumeForm={updateResumeForm}
+                onImportJson={handleImportBaseResume}
+                onExportJson={handleExportBaseResume}
               />
             </div>
           </div>

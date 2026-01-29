@@ -16,13 +16,13 @@ export const useNavigation = () => {
     () => [
       { label: "Dashboard", icon: LayoutDashboard, href: "/" },
       { label: "Profiles", icon: UserRound, href: "/profiles" },
-      { label: "Inbox", icon: Inbox },
-      { label: "Calendar", icon: Calendar },
-      { label: "Chat", icon: MessageSquare },
+      { label: "Inbox", icon: Inbox, href: "/inbox" },
+      { label: "Calendar", icon: Calendar, href: "/calendar" },
+      { label: "Chat", icon: MessageSquare, href: "/chat" },
       { label: "Hire People", icon: Users },
       { label: "VIP Services", icon: Crown },
       { label: "Activity", icon: Activity },
-      { label: "Settings", icon: Settings }
+      { label: "Settings", icon: Settings, href: "/settings" }
     ],
     []
   );

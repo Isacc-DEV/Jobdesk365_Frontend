@@ -21,7 +21,6 @@ const ProfileRow = ({ profile, onOpen, onTemplateClick, onMore, gridTemplate }) 
     bidder,
     unreadCount,
     nextInterview,
-    status
   } = profile;
 
   const cellClass = "h-full px-2 border-r border-border flex items-center box-border min-w-0";
@@ -38,7 +37,7 @@ const ProfileRow = ({ profile, onOpen, onTemplateClick, onMore, gridTemplate }) 
   );
 
   return (
-    <button type="button" onClick={onOpen} className="group w-full text-left">
+    <div className="group w-full text-left">
       <div
         className="relative grid items-stretch gap-0 px-4 py-3 bg-white hover:bg-[#F7FAFF] transition-colors border-b border-border"
         style={{ gridTemplateColumns: gridTemplate }}
@@ -85,16 +84,6 @@ const ProfileRow = ({ profile, onOpen, onTemplateClick, onMore, gridTemplate }) 
           {nextInterview ?? "—"}
         </div>
 
-        <div className={`${cellClass} text-sm justify-start`}>
-          <span
-            className={`px-2 py-1 rounded-full text-[12px] font-semibold ${
-              statusStyles[status] ?? "bg-gray-100 text-ink-muted"
-            }`}
-          >
-            {status}
-          </span>
-        </div>
-
         <div className="flex justify-end px-2 h-full items-center box-border min-w-0">
           <div className="flex items-center gap-2">
             <button
@@ -122,7 +111,7 @@ const ProfileRow = ({ profile, onOpen, onTemplateClick, onMore, gridTemplate }) 
           </div>
         </div>
       </div>
-    </button>
+    </div>
   );
 };
 

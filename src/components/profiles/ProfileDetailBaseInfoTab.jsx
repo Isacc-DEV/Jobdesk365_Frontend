@@ -1,28 +1,76 @@
-const Toggle = ({ checked, onChange, label }) => (
-  <label className="flex items-center gap-3 text-sm text-ink">
-    <span>{label}</span>
-    <button
-      type="button"
-      onClick={() => onChange(!checked)}
-      className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
-        checked ? "bg-accent-primary" : "bg-gray-200"
-      }`}
-      aria-pressed={checked}
-    >
-      <span
-        className={`inline-block h-5 w-5 transform rounded-full bg-white shadow-sm transition-transform ${
-          checked ? "translate-x-5" : "translate-x-1"
-        }`}
-      />
-    </button>
-  </label>
-);
+import { useRef, useState } from "react";
 
-const ProfileDetailBaseInfoTab = ({ visible, baseInfoForm, updateBaseInfoForm }) => (
-  <section className="space-y-6" style={{ display: visible ? "block" : "none" }}>
+const ProfileDetailBaseInfoTab = ({
+  visible,
+  baseInfoForm,
+  updateBaseInfoForm,
+  onImportJson,
+  onExportJson
+}) => {
+  const fileInputRef = useRef(null);
+  const [importError, setImportError] = useState("");
+
+  const handleImportClick = () => {
+    setImportError("");
+    fileInputRef.current?.click();
+  };
+
+  const handleFileChange = async (event) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    try {
+      const text = await file.text();
+      const parsed = JSON.parse(text);
+      if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+        throw new Error("Invalid JSON");
+      }
+      onImportJson?.(parsed);
+      setImportError("");
+    } catch (err) {
+      setImportError("Invalid JSON file.");
+    } finally {
+      event.target.value = "";
+    }
+  };
+
+  return (
+    <section className="space-y-6" style={{ display: visible ? "block" : "none" }}>
+      <div className="flex flex-wrap items-center justify-end gap-2">
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept="application/json"
+          className="hidden"
+          onChange={handleFileChange}
+        />
+        <button
+          type="button"
+          onClick={handleImportClick}
+          className="px-3 py-1.5 rounded-lg border border-border text-xs font-semibold text-ink-muted hover:text-ink"
+        >
+          Import JSON
+        </button>
+        <button
+          type="button"
+          onClick={onExportJson}
+          className="px-3 py-1.5 rounded-lg border border-border text-xs font-semibold text-ink-muted hover:text-ink"
+        >
+          Export JSON
+        </button>
+      </div>
+      {importError ? (
+        <div className="text-xs text-red-600">{importError}</div>
+      ) : null}
     <div className="space-y-3">
       <h3 className="text-xs font-semibold uppercase tracking-[0.18em] text-ink-muted">Name</h3>
       <div className="grid grid-cols-1 gap-4">
+        <input
+          type="text"
+          placeholder="Prefix"
+          className="w-full rounded-lg border border-border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent-primary/40"
+          value={baseInfoForm.prefix}
+          onChange={(event) => updateBaseInfoForm("prefix", event.target.value)}
+        />
         <input
           type="text"
           placeholder="First name"
@@ -50,6 +98,13 @@ const ProfileDetailBaseInfoTab = ({ visible, baseInfoForm, updateBaseInfoForm })
           value={baseInfoForm.desiredSalary}
           onChange={(event) => updateBaseInfoForm("desiredSalary", event.target.value)}
         />
+        <input
+          type="number"
+          placeholder="Current salary"
+          className="w-full rounded-lg border border-border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent-primary/40"
+          value={baseInfoForm.currentSalary}
+          onChange={(event) => updateBaseInfoForm("currentSalary", event.target.value)}
+        />
         <select
           className="w-full rounded-lg border border-border px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-accent-primary/40"
           value={baseInfoForm.currency}
@@ -61,6 +116,13 @@ const ProfileDetailBaseInfoTab = ({ visible, baseInfoForm, updateBaseInfoForm })
           <option value="CAD">CAD</option>
           <option value="INR">INR</option>
         </select>
+        <input
+          type="text"
+          placeholder="Notice period"
+          className="w-full rounded-lg border border-border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent-primary/40"
+          value={baseInfoForm.noticePeriod}
+          onChange={(event) => updateBaseInfoForm("noticePeriod", event.target.value)}
+        />
       </div>
     </div>
 
@@ -91,6 +153,17 @@ const ProfileDetailBaseInfoTab = ({ visible, baseInfoForm, updateBaseInfoForm })
     </div>
 
     <div className="space-y-3">
+      <h3 className="text-xs font-semibold uppercase tracking-[0.18em] text-ink-muted">Credentials</h3>
+      <input
+        type="password"
+        placeholder="Password"
+        className="w-full rounded-lg border border-border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent-primary/40"
+        value={baseInfoForm.password}
+        onChange={(event) => updateBaseInfoForm("password", event.target.value)}
+      />
+    </div>
+
+    <div className="space-y-3">
       <h3 className="text-xs font-semibold uppercase tracking-[0.18em] text-ink-muted">Location</h3>
       <div className="grid grid-cols-1 gap-4">
         <input
@@ -116,10 +189,58 @@ const ProfileDetailBaseInfoTab = ({ visible, baseInfoForm, updateBaseInfoForm })
         />
         <input
           type="text"
+          placeholder="Nationality"
+          className="w-full rounded-lg border border-border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent-primary/40"
+          value={baseInfoForm.nationality}
+          onChange={(event) => updateBaseInfoForm("nationality", event.target.value)}
+        />
+        <input
+          type="text"
           placeholder="Postal code"
           className="w-full rounded-lg border border-border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent-primary/40"
           value={baseInfoForm.postalCode}
           onChange={(event) => updateBaseInfoForm("postalCode", event.target.value)}
+        />
+      </div>
+    </div>
+
+    <div className="space-y-3">
+      <h3 className="text-xs font-semibold uppercase tracking-[0.18em] text-ink-muted">Identity</h3>
+      <div className="grid grid-cols-1 gap-4">
+        <input
+          type="text"
+          placeholder="Gender"
+          className="w-full rounded-lg border border-border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent-primary/40"
+          value={baseInfoForm.gender}
+          onChange={(event) => updateBaseInfoForm("gender", event.target.value)}
+        />
+        <input
+          type="text"
+          placeholder="Race / ethnicity"
+          className="w-full rounded-lg border border-border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent-primary/40"
+          value={baseInfoForm.raceEthnicity}
+          onChange={(event) => updateBaseInfoForm("raceEthnicity", event.target.value)}
+        />
+        <input
+          type="text"
+          placeholder="Sexual orientation"
+          className="w-full rounded-lg border border-border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent-primary/40"
+          value={baseInfoForm.sexualOrientation}
+          onChange={(event) => updateBaseInfoForm("sexualOrientation", event.target.value)}
+        />
+        <input
+          type="text"
+          placeholder="Disability status"
+          className="w-full rounded-lg border border-border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent-primary/40"
+          value={baseInfoForm.disabilityStatus}
+          onChange={(event) => updateBaseInfoForm("disabilityStatus", event.target.value)}
+        />
+        <input
+          type="text"
+          placeholder="Veteran status"
+          className="w-full rounded-lg border border-border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent-primary/40"
+          value={baseInfoForm.veteranStatus}
+          onChange={(event) => updateBaseInfoForm("veteranStatus", event.target.value)}
         />
       </div>
     </div>
@@ -134,57 +255,8 @@ const ProfileDetailBaseInfoTab = ({ visible, baseInfoForm, updateBaseInfoForm })
         onChange={(event) => updateBaseInfoForm("linkedInUrl", event.target.value)}
       />
     </div>
-
-    <div className="space-y-3">
-      <h3 className="text-xs font-semibold uppercase tracking-[0.18em] text-ink-muted">Work Authorization</h3>
-      <div className="flex flex-col gap-3">
-        <Toggle
-          label="Authorized to work"
-          checked={baseInfoForm.authorizedToWork}
-          onChange={(value) => updateBaseInfoForm("authorizedToWork", value)}
-        />
-        <Toggle
-          label="Needs sponsorship"
-          checked={baseInfoForm.needsSponsorship}
-          onChange={(value) => updateBaseInfoForm("needsSponsorship", value)}
-        />
-      </div>
-    </div>
-
-    <div className="space-y-3">
-      <h3 className="text-xs font-semibold uppercase tracking-[0.18em] text-ink-muted">Education</h3>
-      <div className="grid grid-cols-1 gap-4">
-        <input
-          type="text"
-          placeholder="Highest degree"
-          className="w-full rounded-lg border border-border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent-primary/40"
-          value={baseInfoForm.highestDegree}
-          onChange={(event) => updateBaseInfoForm("highestDegree", event.target.value)}
-        />
-        <input
-          type="text"
-          placeholder="School"
-          className="w-full rounded-lg border border-border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent-primary/40"
-          value={baseInfoForm.school}
-          onChange={(event) => updateBaseInfoForm("school", event.target.value)}
-        />
-        <input
-          type="text"
-          placeholder="Field"
-          className="w-full rounded-lg border border-border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent-primary/40"
-          value={baseInfoForm.field}
-          onChange={(event) => updateBaseInfoForm("field", event.target.value)}
-        />
-        <input
-          type="number"
-          placeholder="Graduation year"
-          className="w-full rounded-lg border border-border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent-primary/40"
-          value={baseInfoForm.graduationYear}
-          onChange={(event) => updateBaseInfoForm("graduationYear", event.target.value)}
-        />
-      </div>
-    </div>
-  </section>
-);
+    </section>
+  );
+};
 
 export default ProfileDetailBaseInfoTab;

@@ -1,4 +1,4 @@
-﻿import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useProfiles } from "../../hooks/useProfiles";
 import { useTemplates } from "../../hooks/useTemplates";
 import ProfileList from "../profiles/ProfileList";
@@ -6,8 +6,18 @@ import CreateProfileModal from "../profiles/CreateProfileModal";
 import TemplateSelectModal from "../profiles/TemplateSelectModal";
 import ProfileDetailPanel from "../profiles/ProfileDetailPanel";
 
+const BACKEND_ORIGIN = "http://localhost:4000";
+
 const MainPlaceholder = () => {
-  const { profiles, loading, error, createProfile, updateProfile } = useProfiles();
+  const {
+    profiles,
+    loading,
+    error,
+    createProfile,
+    updateProfile,
+    fetchProfile,
+    startOutlookConnect
+  } = useProfiles();
   const { templates, loading: templatesLoading, error: templatesError } = useTemplates();
   const [createOpen, setCreateOpen] = useState(false);
   const [templateOpen, setTemplateOpen] = useState(false);
@@ -17,6 +27,34 @@ const MainPlaceholder = () => {
   const [detailProfile, setDetailProfile] = useState(null);
   const [message, setMessage] = useState("");
   const [messageType, setMessageType] = useState("success");
+  const [emailConnecting, setEmailConnecting] = useState(false);
+
+  useEffect(() => {
+    const handleMessage = async (event) => {
+      if (event.origin !== BACKEND_ORIGIN) return;
+      const payload = event.data || {};
+      if (payload.type === "email_connected" && payload.profileId) {
+        try {
+          const updated = await fetchProfile(payload.profileId);
+          if (detailProfile?.id === payload.profileId && updated) {
+            setDetailProfile(updated);
+          }
+          setMessageType("success");
+          setMessage("Email connected successfully.");
+        } catch (err) {
+          setMessageType("error");
+          setMessage(err?.message || "Email connected, but failed to refresh profile.");
+        }
+      }
+      if (payload.type === "email_connect_error") {
+        setMessageType("error");
+        setMessage(payload.message || "Email connection failed.");
+      }
+    };
+
+    window.addEventListener("message", handleMessage);
+    return () => window.removeEventListener("message", handleMessage);
+  }, [detailProfile, fetchProfile]);
 
   const handleCreate = async (payload) => {
     try {
@@ -32,6 +70,33 @@ const MainPlaceholder = () => {
       setMessageType("error");
       setMessage(err?.message || "Unable to create profile.");
       throw err;
+    }
+  };
+
+  const handleConnectEmail = async (profileId) => {
+    if (!profileId) return;
+    try {
+      setMessage("");
+      setEmailConnecting(true);
+      const authUrl = await startOutlookConnect(profileId);
+      if (!authUrl) return;
+      const width = 600;
+      const height = 720;
+      const left = window.screenX + Math.max(0, (window.outerWidth - width) / 2);
+      const top = window.screenY + Math.max(0, (window.outerHeight - height) / 2);
+      const popup = window.open(
+        authUrl,
+        "outlook-connect",
+        `width=${width},height=${height},left=${left},top=${top}`
+      );
+      if (!popup) {
+        throw new Error("Popup blocked. Please allow popups and try again.");
+      }
+    } catch (err) {
+      setMessageType("error");
+      setMessage(err?.message || "Unable to start email connection.");
+    } finally {
+      setEmailConnecting(false);
     }
   };
 
@@ -67,7 +132,9 @@ const MainPlaceholder = () => {
         {message ? (
           <div
             className={`text-sm px-4 py-3 rounded-lg border ${
-              messageType === "success" ? "bg-green-50 text-green-700 border-green-200" : "bg-red-50 text-red-700 border-red-200"
+              messageType === "success"
+                ? "bg-green-50 text-green-700 border-green-200"
+                : "bg-red-50 text-red-700 border-red-200"
             }`}
           >
             {message}
@@ -111,6 +178,8 @@ const MainPlaceholder = () => {
           setMessageType("success");
           setMessage("Profile details saved.");
         }}
+        onConnectEmail={handleConnectEmail}
+        emailConnecting={emailConnecting}
       />
     </main>
   );

@@ -1,7 +1,7 @@
 ﻿import ProfileRow from "./ProfileRow";
 
 const gridTemplate =
-  "minmax(0, 1.5fr) minmax(0, 1.2fr) minmax(0, 1.1fr) minmax(0, 1fr) minmax(0, 0.9fr) minmax(0, 1.05fr) minmax(0, 0.95fr) minmax(0, 0.85fr)";
+  "minmax(0, 1.5fr) minmax(0, 1.5fr) minmax(0, 1.1fr) minmax(0, 1fr) minmax(0, 0.9fr) minmax(0, 1.05fr) minmax(0, 0.95fr) minmax(0, 0.85fr)";
 
 const ProfileList = ({ profiles, loading, error, onTemplateClick, onOpen }) => {
   if (loading) {
@@ -35,7 +35,6 @@ const ProfileList = ({ profiles, loading, error, onTemplateClick, onOpen }) => {
     { label: "Bidder", align: "text-left" },
     { label: "Inbox", align: "text-left" },
     { label: "Next Interview", align: "text-left" },
-    { label: "Status", align: "text-left" },
     { label: "Actions", align: "text-right" }
   ];
 

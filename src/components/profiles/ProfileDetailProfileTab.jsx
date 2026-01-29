@@ -13,7 +13,9 @@ const ProfileDetailProfileTab = ({
   selectedBidder,
   bidderOptions,
   emailStatusLabel,
-  emailActionLabel
+  emailActionLabel,
+  onConnectEmail,
+  emailConnecting = false
 }) => (
   <section className="space-y-4" style={{ display: visible ? "block" : "none" }}>
     <div className="flex flex-col gap-1">
@@ -90,10 +92,11 @@ const ProfileDetailProfileTab = ({
         {emailActionLabel ? (
           <button
             type="button"
-            onClick={() => updateProfileForm("emailStatus", "connected")}
-            className="px-3 py-1.5 rounded-lg border border-border text-sm font-semibold text-ink hover:text-ink"
+            onClick={onConnectEmail}
+            disabled={!onConnectEmail || emailConnecting}
+            className="px-3 py-1.5 rounded-lg border border-border text-sm font-semibold text-ink hover:text-ink disabled:opacity-60 disabled:cursor-not-allowed"
           >
-            {emailActionLabel}
+            {emailConnecting ? "Connecting..." : emailActionLabel}
           </button>
         ) : null}
       </div>
