@@ -2,12 +2,15 @@ import js from "@eslint/js";
 import react from "eslint-plugin-react";
 import reactHooks from "eslint-plugin-react-hooks";
 import reactRefresh from "eslint-plugin-react-refresh";
+import tseslint from "@typescript-eslint/eslint-plugin";
+import tsParser from "@typescript-eslint/parser";
 
 export default [
   js.configs.recommended,
   {
-    files: ["src/**/*.{js,jsx}"],
+    files: ["src/**/*.{ts,tsx}"],
     languageOptions: {
+      parser: tsParser,
       ecmaVersion: "latest",
       sourceType: "module",
       parserOptions: {
@@ -22,6 +25,7 @@ export default [
       }
     },
     plugins: {
+      "@typescript-eslint": tseslint,
       react,
       "react-hooks": reactHooks,
       "react-refresh": reactRefresh
@@ -32,6 +36,7 @@ export default [
       }
     },
     rules: {
+      ...(tseslint.configs?.recommended?.rules ?? {}),
       ...(react.configs?.flat?.recommended?.rules ?? {}),
       "react/react-in-jsx-scope": "off",
       "react/jsx-uses-react": "off",

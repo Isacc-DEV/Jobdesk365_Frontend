@@ -7,7 +7,7 @@
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
-    "lint": "eslint \"src/**/*.{js,jsx}\""
+    "lint": "eslint \"src/**/*.{ts,tsx}\""
   },
   "dependencies": {
     "lucide-react": "^0.460.0",
@@ -21,8 +21,14 @@
     "eslint-plugin-react": "^7.37.5",
     "eslint-plugin-react-hooks": "^5.1.0-rc.0",
     "eslint-plugin-react-refresh": "^0.4.14",
+    "@types/react": "^19.2.3",
+    "@types/react-dom": "^19.2.1",
+    "@types/node": "^20.17.9",
+    "@typescript-eslint/eslint-plugin": "^8.0.0",
+    "@typescript-eslint/parser": "^8.0.0",
     "postcss": "^8.5.6",
     "tailwindcss": "^3.4.13",
+    "typescript": "^5.6.3",
     "vite": "^7.3.1"
   }
 }

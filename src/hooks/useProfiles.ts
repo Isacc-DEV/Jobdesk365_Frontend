@@ -29,13 +29,18 @@ const normalizeProfile = (profile) => {
   };
 };
 
+type LoadProfilesOptions = {
+  signal?: AbortSignal;
+  showLoading?: boolean;
+};
+
 export const useProfiles = () => {
   const [profiles, setProfiles] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
   const loadProfiles = useCallback(
-    async ({ signal, showLoading } = {}) => {
+    async ({ signal, showLoading }: LoadProfilesOptions = {}) => {
       const token = typeof window !== "undefined" ? window.localStorage.getItem(TOKEN_KEY) : null;
       if (!token) {
         setError("Missing token");

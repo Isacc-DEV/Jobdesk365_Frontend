@@ -191,6 +191,18 @@ const downloadJson = (filename, data) => {
   URL.revokeObjectURL(url);
 };
 
+type ProfileDetailPanelProps = {
+  open: boolean;
+  onClose: () => void;
+  profile?: any;
+  bidders?: any[];
+  onSaveProfile?: (payload: any) => Promise<void> | void;
+  onSaveBaseInfo?: (payload: any) => Promise<void> | void;
+  onSaveBaseResume?: (payload: any) => Promise<void> | void;
+  onConnectEmail?: (profileId: string) => Promise<void> | void;
+  emailConnecting?: boolean;
+};
+
 const ProfileDetailPanel = ({
   open,
   onClose,
@@ -201,7 +213,7 @@ const ProfileDetailPanel = ({
   onSaveBaseResume,
   onConnectEmail,
   emailConnecting = false
-}) => {
+}: ProfileDetailPanelProps) => {
   const [activeTab, setActiveTab] = useState("profile");
   const [dirtyTabs, setDirtyTabs] = useState({
     profile: false,

@@ -1,4 +1,24 @@
-const SidebarItem = ({ icon: Icon, label, active, expanded, href, currentRoute, onNavigate }) => {
+import type { ComponentType } from "react";
+
+type SidebarItemProps = {
+  icon: ComponentType<{ size?: number; strokeWidth?: number; className?: string }>;
+  label: string;
+  active?: boolean;
+  expanded: boolean;
+  href?: string;
+  currentRoute: string;
+  onNavigate?: (path: string) => void;
+};
+
+const SidebarItem = ({
+  icon: Icon,
+  label,
+  active,
+  expanded,
+  href,
+  currentRoute,
+  onNavigate
+}: SidebarItemProps) => {
   const base =
     "relative w-full h-11 rounded-xl text-[15px] font-medium transition duration-150 ease-out hover:bg-white/5";
   // Avoid "/" matching every route; allow prefix match only for nested sections.

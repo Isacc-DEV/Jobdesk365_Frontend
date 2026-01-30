@@ -1,4 +1,15 @@
-const InputField = ({ label, type = "text", placeholder, value, onChange, error }) => {
+import type { ChangeEventHandler } from "react";
+
+type InputFieldProps = {
+  label: string;
+  type?: string;
+  placeholder?: string;
+  value: string;
+  onChange: ChangeEventHandler<HTMLInputElement>;
+  error?: string;
+};
+
+const InputField = ({ label, type = "text", placeholder, value, onChange, error }: InputFieldProps) => {
   return (
     <label className="flex flex-col gap-2 text-sm text-ink">
       <span className="font-semibold">{label}</span>

@@ -9,7 +9,7 @@ export const useTemplates = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
-  const loadTemplates = async (signal) => {
+  const loadTemplates = async (signal?: AbortSignal) => {
     const token = typeof window !== "undefined" ? window.localStorage.getItem(TOKEN_KEY) : null;
     if (!token) {
       setError("Missing token");

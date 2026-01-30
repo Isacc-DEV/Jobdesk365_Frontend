@@ -1,4 +1,20 @@
-const IconButton = ({ icon: Icon, ariaLabel, onClick, className = "", type = "button" }) => {
+import type { ComponentType, MouseEventHandler } from "react";
+
+type IconButtonProps = {
+  icon: ComponentType<{ size?: number; strokeWidth?: number; className?: string }>;
+  ariaLabel: string;
+  onClick?: MouseEventHandler<HTMLButtonElement>;
+  className?: string;
+  type?: "button" | "submit" | "reset";
+};
+
+const IconButton = ({
+  icon: Icon,
+  ariaLabel,
+  onClick,
+  className = "",
+  type = "button"
+}: IconButtonProps) => {
   return (
     <button
       type={type}

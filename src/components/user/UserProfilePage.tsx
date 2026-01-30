@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import type { ChangeEvent } from "react";
 import { useUser } from "../../hooks/useUser";
 
 const labelClass = "text-sm font-semibold text-ink";
@@ -36,9 +37,27 @@ const tabHeadings = {
   }
 };
 
+type ProfileForm = {
+  name: string;
+  email: string;
+  role: string;
+  location: string;
+  bio: string;
+  phone: string;
+};
+
+const emptyForm: ProfileForm = {
+  name: "",
+  email: "",
+  role: "",
+  location: "",
+  bio: "",
+  phone: ""
+};
+
 const UserProfilePage = () => {
   const { user, updateUser, loading, error, saving } = useUser();
-  const [form, setForm] = useState({});
+  const [form, setForm] = useState<ProfileForm>(emptyForm);
   const [saved, setSaved] = useState(false);
   const [activeTab, setActiveTab] = useState("profile");
 
@@ -77,8 +96,10 @@ const UserProfilePage = () => {
 
   if (!user) return null;
 
-  const handleChange = (field) => (e) => {
-    setForm((prev) => ({ ...prev, [field]: e.target.value }));
+  const handleChange =
+    (field: keyof ProfileForm) =>
+    (e: ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
+      setForm((prev) => ({ ...prev, [field]: e.target.value }));
   };
 
   const handleSave = () => {
