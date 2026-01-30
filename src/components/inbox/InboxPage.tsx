@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import {
   Archive,
   CheckSquare,
@@ -9,69 +9,197 @@ import {
   Trash2
 } from "lucide-react";
 
+const API_BASE = "http://localhost:4000";
+const TOKEN_KEY = "authToken";
+
+const formatTimestamp = (value) => {
+  if (!value) return "";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "";
+  const now = new Date();
+  const diffMs = now.getTime() - date.getTime();
+  if (diffMs < 60_000) return "Just now";
+  if (diffMs < 3_600_000) return `${Math.floor(diffMs / 60_000)}m ago`;
+  if (date.toDateString() === now.toDateString()) {
+    return date.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+  }
+  return date.toLocaleDateString();
+};
+
+const normalizeAccount = (account) => ({
+  id: account.email_account_id,
+  email: account.email_address || "Unknown",
+  unread: Number(account.unread_count || 0),
+  status: account.status || "",
+  profileId: account.profile_id,
+  profileName: account.profile_name || ""
+});
+
+const normalizeEmail = (email) => ({
+  id: email.id,
+  accountId: email.email_account_id,
+  from: email.from_email || "Unknown sender",
+  subject: email.subject || email.snippet || "(No subject)",
+  time: formatTimestamp(email.received_at),
+  unread: Boolean(email.is_unread)
+});
+
 const InboxPage = () => {
-  const accounts = useMemo(
-    () => [
-      { id: "acc-1", email: "james@outlook.com", unread: 24 },
-      { id: "acc-2", email: "robin@gmail.com", unread: 3 },
-      { id: "acc-3", email: "hr@company.com", unread: 0 }
-    ],
-    []
-  );
-
-  const [activeAccountId, setActiveAccountId] = useState(accounts[0]?.id);
+  const [accounts, setAccounts] = useState([]);
+  const [accountsLoading, setAccountsLoading] = useState(true);
+  const [accountsError, setAccountsError] = useState(null);
+  const [activeAccountId, setActiveAccountId] = useState(null);
   const [activeFilter, setActiveFilter] = useState("All");
+  const [emails, setEmails] = useState([]);
+  const [emailsLoading, setEmailsLoading] = useState(false);
+  const [emailsError, setEmailsError] = useState(null);
 
-  const emails = useMemo(
-    () => [
-      {
-        id: "e1",
-        accountId: "acc-1",
-        from: "Azure Security Alert",
-        subject: "Unusual sign-in activity detected",
-        time: "2m ago",
-        unread: true
-      },
-      {
-        id: "e2",
-        accountId: "acc-1",
-        from: "Project Team",
-        subject: "Weekly project update",
-        time: "Today",
-        unread: true
-      },
-      {
-        id: "e3",
-        accountId: "acc-1",
-        from: "Jane Smith",
-        subject: "Lunch tomorrow?",
-        time: "10:45 AM",
-        unread: false
-      },
-      {
-        id: "e4",
-        accountId: "acc-2",
-        from: "Marketing Newsletter",
-        subject: "Latest trends in digital marketing",
-        time: "Yesterday",
-        unread: false
-      },
-      {
-        id: "e5",
-        accountId: "acc-2",
-        from: "Meeting Reminder",
-        subject: "Team meeting at 2 PM",
-        time: "Friday",
-        unread: false
+  const loadAccounts = useCallback(async (signal) => {
+    const token = typeof window !== "undefined"
+      ? window.localStorage.getItem(TOKEN_KEY)
+      : null;
+    if (!token) {
+      setAccountsError("Missing token");
+      setAccounts([]);
+      setAccountsLoading(false);
+      return;
+    }
+
+    try {
+      setAccountsLoading(true);
+      setAccountsError(null);
+      const res = await fetch(`${API_BASE}/email/accounts`, {
+        signal,
+        headers: {
+          Authorization: `Bearer ${token}`
+        }
+      });
+      if (res.status === 401 && typeof window !== "undefined") {
+        window.location.href = "/auth";
+        return;
       }
-    ],
-    []
-  );
+      if (!res.ok) {
+        throw new Error(`Failed to load accounts (${res.status})`);
+      }
+      const data = await res.json();
+      const items = Array.isArray(data?.items) ? data.items : [];
+      setAccounts(items.map(normalizeAccount).filter((item) => item.id));
+    } catch (err) {
+      if (err.name !== "AbortError") {
+        setAccountsError(err.message || "Unable to load accounts.");
+        setAccounts([]);
+      }
+    } finally {
+      setAccountsLoading(false);
+    }
+  }, []);
+
+  const loadEmails = useCallback(async (accountId, signal) => {
+    if (!accountId) {
+      setEmails([]);
+      return;
+    }
+    const token = typeof window !== "undefined"
+      ? window.localStorage.getItem(TOKEN_KEY)
+      : null;
+    if (!token) {
+      setEmailsError("Missing token");
+      setEmails([]);
+      setEmailsLoading(false);
+      return;
+    }
+
+    try {
+      setEmailsLoading(true);
+      setEmailsError(null);
+      const res = await fetch(
+        `${API_BASE}/email/messages?account_id=${encodeURIComponent(accountId)}`,
+        {
+          signal,
+          headers: {
+            Authorization: `Bearer ${token}`
+          }
+        }
+      );
+      if (res.status === 401 && typeof window !== "undefined") {
+        window.location.href = "/auth";
+        return;
+      }
+      if (!res.ok) {
+        throw new Error(`Failed to load emails (${res.status})`);
+      }
+      const data = await res.json();
+      const items = Array.isArray(data?.items) ? data.items : [];
+      setEmails(items.map(normalizeEmail));
+    } catch (err) {
+      if (err.name !== "AbortError") {
+        setEmailsError(err.message || "Unable to load emails.");
+        setEmails([]);
+      }
+    } finally {
+      setEmailsLoading(false);
+    }
+  }, []);
+
+  const syncEmails = useCallback(async (accountId) => {
+    if (!accountId) return null;
+    const token = typeof window !== "undefined"
+      ? window.localStorage.getItem(TOKEN_KEY)
+      : null;
+    if (!token) {
+      setEmailsError("Missing token");
+      return null;
+    }
+
+    const res = await fetch(
+      `${API_BASE}/email/sync?account_id=${encodeURIComponent(accountId)}`,
+      {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${token}`
+        }
+      }
+    );
+    if (res.status === 401 && typeof window !== "undefined") {
+      window.location.href = "/auth";
+      return null;
+    }
+    if (!res.ok) {
+      throw new Error(`Failed to sync emails (${res.status})`);
+    }
+    return res.json();
+  }, []);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    loadAccounts(controller.signal);
+    return () => controller.abort();
+  }, [loadAccounts]);
+
+  useEffect(() => {
+    if (!accounts.length) {
+      setActiveAccountId(null);
+      return;
+    }
+    if (!activeAccountId || !accounts.some((account) => account.id === activeAccountId)) {
+      setActiveAccountId(accounts[0].id);
+    }
+  }, [accounts, activeAccountId]);
+
+  useEffect(() => {
+    if (!activeAccountId) {
+      setEmails([]);
+      return;
+    }
+    const controller = new AbortController();
+    loadEmails(activeAccountId, controller.signal);
+    return () => controller.abort();
+  }, [activeAccountId, loadEmails]);
 
   const activeAccount = accounts.find((account) => account.id === activeAccountId) || accounts[0];
-  const unreadCount = emails.filter(
-    (email) => email.accountId === activeAccount?.id && email.unread
-  ).length;
+  const unreadCount = emails.length > 0
+    ? emails.filter((email) => email.accountId === activeAccount?.id && email.unread).length
+    : activeAccount?.unread ?? 0;
 
   const filteredEmails = emails.filter((email) => email.accountId === activeAccount?.id);
   const visibleEmails = activeFilter === "Unread"
@@ -79,6 +207,28 @@ const InboxPage = () => {
     : filteredEmails;
 
   const filters = ["All", "Unread", "Important", "Interview"];
+
+  const handleConnectEmail = () => {
+    if (typeof window !== "undefined") {
+      window.history.pushState({}, "", "/profiles");
+      window.dispatchEvent(new PopStateEvent("popstate"));
+    }
+  };
+
+  const handleSync = async () => {
+    if (!activeAccountId) return;
+    try {
+      setEmailsError(null);
+      setEmailsLoading(true);
+      await syncEmails(activeAccountId);
+      await loadAccounts();
+      await loadEmails(activeAccountId);
+    } catch (err) {
+      setEmailsError(err.message || "Unable to sync emails.");
+    } finally {
+      setEmailsLoading(false);
+    }
+  };
 
   return (
     <main className="bg-main min-h-[calc(100vh-64px)] border-t border-border px-6 py-6">
@@ -89,35 +239,44 @@ const InboxPage = () => {
               Email Accounts
             </div>
             <div className="mt-4 space-y-2">
-              {accounts.map((account) => {
-                const isActive = account.id === activeAccountId;
-                return (
-                  <button
-                    key={account.id}
-                    type="button"
-                    onClick={() => setActiveAccountId(account.id)}
-                    className={`w-full flex items-center justify-between rounded-xl px-3 py-2 text-sm font-semibold transition-colors ${
-                      isActive
-                        ? "bg-accent-primary/10 text-accent-primary"
-                        : "text-ink-muted hover:text-ink hover:bg-gray-100"
-                    }`}
-                  >
-                    <span className="flex items-center gap-2">
-                      <span
-                        className={`h-2.5 w-2.5 rounded-full ${
-                          isActive ? "bg-accent-primary" : "bg-gray-300"
-                        }`}
-                      />
-                      {account.email}
-                    </span>
-                    <span className="text-xs text-ink-muted">({account.unread})</span>
-                  </button>
-                );
-              })}
+              {accountsLoading ? (
+                <div className="text-sm text-ink-muted">Loading accounts...</div>
+              ) : accountsError ? (
+                <div className="text-sm text-red-600">Couldn&apos;t load accounts.</div>
+              ) : accounts.length === 0 ? (
+                <div className="text-sm text-ink-muted">No connected accounts yet.</div>
+              ) : (
+                accounts.map((account) => {
+                  const isActive = account.id === activeAccountId;
+                  return (
+                    <button
+                      key={account.id}
+                      type="button"
+                      onClick={() => setActiveAccountId(account.id)}
+                      className={`w-full flex items-center justify-between rounded-xl px-3 py-2 text-sm font-semibold transition-colors ${
+                        isActive
+                          ? "bg-accent-primary/10 text-accent-primary"
+                          : "text-ink-muted hover:text-ink hover:bg-gray-100"
+                      }`}
+                    >
+                      <span className="flex items-center gap-2">
+                        <span
+                          className={`h-2.5 w-2.5 rounded-full ${
+                            isActive ? "bg-accent-primary" : "bg-gray-300"
+                          }`}
+                        />
+                        {account.email}
+                      </span>
+                      <span className="text-xs text-ink-muted">({account.unread})</span>
+                    </button>
+                  );
+                })
+              )}
             </div>
 
             <button
               type="button"
+              onClick={handleConnectEmail}
               className="mt-4 w-full rounded-xl border border-border bg-gray-50 px-3 py-2 text-sm font-semibold text-accent-primary hover:bg-white"
             >
               + Connect email
@@ -128,7 +287,7 @@ const InboxPage = () => {
             <header>
               <h1 className="text-2xl font-semibold text-ink">Inbox</h1>
               <p className="text-sm text-ink-muted">
-                {activeAccount?.email} · {unreadCount} unread
+                {activeAccount?.email || "No account selected"} - {unreadCount} unread
               </p>
             </header>
 
@@ -187,6 +346,7 @@ const InboxPage = () => {
               <div className="flex items-center gap-2">
                 <button
                   type="button"
+                  onClick={handleSync}
                   className="flex items-center gap-2 rounded-lg border border-border px-3 py-1.5 text-sm font-semibold text-ink-muted hover:text-ink"
                 >
                   <RefreshCw size={16} />
@@ -202,11 +362,38 @@ const InboxPage = () => {
               </div>
             </div>
 
-            {visibleEmails.length === 0 ? (
+            {!activeAccount ? (
+              <div className="rounded-2xl border border-border bg-white p-6 text-center">
+                <p className="text-sm text-ink-muted">Connect an email account to view your inbox.</p>
+                <button
+                  type="button"
+                  onClick={handleConnectEmail}
+                  className="mt-4 rounded-xl bg-accent-primary px-4 py-2 text-sm font-semibold text-white"
+                >
+                  Go to profiles
+                </button>
+              </div>
+            ) : emailsLoading ? (
+              <div className="rounded-2xl border border-border bg-white p-6 text-center">
+                <p className="text-sm text-ink-muted">Loading emails...</p>
+              </div>
+            ) : emailsError ? (
+              <div className="rounded-2xl border border-border bg-white p-6 text-center">
+                <p className="text-sm text-red-600">Couldn&apos;t load emails.</p>
+                <button
+                  type="button"
+                  onClick={handleSync}
+                  className="mt-4 rounded-xl border border-border px-4 py-2 text-sm font-semibold text-ink-muted hover:text-ink"
+                >
+                  Try again
+                </button>
+              </div>
+            ) : visibleEmails.length === 0 ? (
               <div className="rounded-2xl border border-border bg-white p-6 text-center">
                 <p className="text-sm text-ink-muted">No emails in this inbox.</p>
                 <button
                   type="button"
+                  onClick={handleSync}
                   className="mt-4 rounded-xl bg-accent-primary px-4 py-2 text-sm font-semibold text-white"
                 >
                   Sync now
@@ -246,7 +433,7 @@ const InboxPage = () => {
                           {email.subject}
                         </p>
                         <p className="text-xs text-ink-muted">
-                          {activeAccount?.email} · {email.time}
+                          {activeAccount?.email} - {email.time}
                         </p>
                       </div>
                     </div>
