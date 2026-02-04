@@ -1,9 +1,23 @@
 ﻿import ProfileRow from "./ProfileRow";
 
-const gridTemplate =
-  "minmax(0, 1.5fr) minmax(0, 1.5fr) minmax(0, 1.1fr) minmax(0, 1fr) minmax(0, 0.9fr) minmax(0, 1.05fr) minmax(0, 0.95fr) minmax(0, 0.85fr)";
+const getGridTemplate = (showOwner) =>
+  showOwner
+    ? "minmax(0, 1.5fr) minmax(0, 1fr) minmax(0, 1.5fr) minmax(0, 1.1fr) minmax(0, 1fr) minmax(0, 0.9fr) minmax(0, 1.05fr) minmax(0, 0.85fr)"
+    : "minmax(0, 1.5fr) minmax(0, 1.5fr) minmax(0, 1.1fr) minmax(0, 1fr) minmax(0, 0.9fr) minmax(0, 1.05fr) minmax(0, 0.85fr)";
 
-const ProfileList = ({ profiles, loading, error, onTemplateClick, onOpen }) => {
+const ProfileList = ({
+  profiles,
+  loading,
+  error,
+  onTemplateClick,
+  onEmailOpen,
+  onOpen,
+  onDelete,
+  onBidderRequest,
+  onTemplatesOpen,
+  allowBidderAssign,
+  showOwner
+}) => {
   if (loading) {
     return (
       <div className="border border-border rounded-2xl bg-white p-6 text-sm text-ink-muted">
@@ -30,6 +44,7 @@ const ProfileList = ({ profiles, loading, error, onTemplateClick, onOpen }) => {
 
   const headerCells = [
     { label: "Profile", align: "text-left" },
+    ...(showOwner ? [{ label: "Username", align: "text-left" }] : []),
     { label: "Email", align: "text-left" },
     { label: "Template", align: "text-left" },
     { label: "Bidder", align: "text-left" },
@@ -37,6 +52,8 @@ const ProfileList = ({ profiles, loading, error, onTemplateClick, onOpen }) => {
     { label: "Next Interview", align: "text-left" },
     { label: "Actions", align: "text-right" }
   ];
+
+  const gridTemplate = getGridTemplate(showOwner);
 
   return (
     <div className="border border-border rounded-2xl overflow-hidden bg-white">
@@ -62,7 +79,12 @@ const ProfileList = ({ profiles, loading, error, onTemplateClick, onOpen }) => {
             profile={profile}
             onOpen={() => onOpen?.(profile)}
             onTemplateClick={(anchor) => onTemplateClick?.(profile, anchor)}
-            onMore={() => {}}
+            onEmailOpen={() => onEmailOpen?.(profile)}
+            onDelete={() => onDelete?.(profile)}
+            onBidderRequest={() => onBidderRequest?.(profile)}
+            onTemplatesOpen={onTemplatesOpen}
+            allowBidderAssign={allowBidderAssign}
+            showOwner={showOwner}
             gridTemplate={gridTemplate}
           />
         ))}

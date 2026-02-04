@@ -2,7 +2,7 @@ const BrandPanel = () => {
   const bullets = [
     "Profiles with synced email",
     "Apply Assist + tailored resumes",
-    "Hire bidders & callers with credits"
+    "Hire employees & callers with credits"
   ];
 
   return (

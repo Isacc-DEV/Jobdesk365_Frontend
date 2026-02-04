@@ -96,10 +96,10 @@ const ChatPage = () => {
   const activeMessages = messages[activeThreadId] || [];
 
   return (
-    <main className="bg-main min-h-[calc(100vh-64px)] border-t border-border px-6 py-6">
+    <main className="min-h-[calc(100vh-64px)] px-4 py-6">
       <div className="mx-auto flex flex-col gap-6">
         <div className="grid grid-cols-[260px_1fr] gap-6">
-          <aside className="rounded-2xl border border-border bg-white p-4 shadow-sm">
+          <aside className="border border-border bg-white p-4  shadow-sm">
             <div className="text-xs font-semibold uppercase tracking-[0.18em] text-ink-muted">
               Direct Messages
             </div>
@@ -135,7 +135,7 @@ const ChatPage = () => {
                             {thread.name}
                           </div>
                           <div className="text-xs text-ink-muted">
-                            {thread.role} · {thread.lastMessage}
+                            {thread.role} ï¿½ {thread.lastMessage}
                           </div>
                         </div>
                       </div>
@@ -156,14 +156,14 @@ const ChatPage = () => {
             </button>
           </aside>
 
-          <section className="flex flex-col gap-4">
+          <section className="flex flex-col gap-4 border border-border bg-white p-4 shadow-sm">
             {activeThread ? (
               <>
                 <div className="flex items-center justify-between rounded-2xl border border-border bg-white px-5 py-4">
                   <div>
                     <h1 className="text-lg font-semibold text-ink">{activeThread.name}</h1>
                     <p className="text-sm text-ink-muted">
-                      {activeThread.role} · {activeThread.status}
+                      {activeThread.role} ï¿½ {activeThread.status}
                     </p>
                   </div>
                   <div className="flex items-center gap-2">

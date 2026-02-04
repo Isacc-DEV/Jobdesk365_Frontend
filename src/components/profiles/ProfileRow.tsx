@@ -1,4 +1,4 @@
-﻿import { Eye, Trash2 } from "lucide-react";
+﻿import { Eye, FileCode, Trash2 } from "lucide-react";
 
 const statusStyles = {
   Draft: "bg-gray-100 text-ink-muted",
@@ -11,19 +11,40 @@ const statusStyles = {
   Idle: "bg-gray-100 text-ink-muted"
 };
 
-const ProfileRow = ({ profile, onOpen, onTemplateClick, onMore, gridTemplate }) => {
+const ProfileRow = ({
+  profile,
+  onOpen,
+  onTemplateClick,
+  onEmailOpen,
+  onDelete,
+  onBidderRequest,
+  onTemplatesOpen,
+  allowBidderAssign,
+  showOwner,
+  gridTemplate
+}) => {
   const {
     name,
     subtitle,
+    ownerUsername,
     templateTitle,
     email,
     emailConnected,
     bidder,
     unreadCount,
     nextInterview,
+    isOwner,
+    isAssignedToCurrentUser
   } = profile;
 
   const cellClass = "h-full px-2 border-r border-border flex items-center box-border min-w-0";
+  const canOpenEmail = Boolean(emailConnected && email && onEmailOpen);
+  const handleEmailOpen = (event) => {
+    event.stopPropagation();
+    if (canOpenEmail) {
+      onEmailOpen();
+    }
+  };
 
   const emailNode = emailConnected ? (
     <div className="flex flex-col">
@@ -34,6 +55,10 @@ const ProfileRow = ({ profile, onOpen, onTemplateClick, onMore, gridTemplate }) 
     <span className="text-[12px] px-2 py-1 rounded-md bg-gray-100 text-ink-muted border border-border-soft">
       Not connected
     </span>
+  );
+
+  const canManageBidder = Boolean(
+    onBidderRequest && (isOwner || isAssignedToCurrentUser || allowBidderAssign)
   );
 
   return (
@@ -49,25 +74,80 @@ const ProfileRow = ({ profile, onOpen, onTemplateClick, onMore, gridTemplate }) 
           </div>
         </div>
 
+        {showOwner ? (
+          <div className={`${cellClass} text-sm text-ink`}>
+            <span className="truncate" title={ownerUsername || "-"}>
+              {ownerUsername || "-"}
+            </span>
+          </div>
+        ) : null}
+
         <div className={`${cellClass} justify-start gap-2`}>
-          {emailNode}
+          {canOpenEmail ? (
+            <button
+              type="button"
+              aria-label={`Open inbox for ${email}`}
+              onClick={handleEmailOpen}
+              className="w-full text-left rounded-md px-2 py-1 -mx-2 -my-1 transition-colors hover:bg-gray-50 cursor-pointer"
+            >
+              {emailNode}
+            </button>
+          ) : (
+            <div className="w-full">{emailNode}</div>
+          )}
         </div>
 
         <div className={`${cellClass} text-sm text-ink`}>
-          <button
-            type="button"
-            onClick={(e) => {
-              e.stopPropagation();
-              onTemplateClick?.(e.currentTarget.getBoundingClientRect());
-            }}
-            className="text-left font-medium text-accent-primary hover:underline"
-          >
-            {templateTitle || "—"}
-          </button>
+          <div className="flex items-center gap-2 min-w-0">
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                onTemplateClick?.(e.currentTarget.getBoundingClientRect());
+              }}
+              className="text-left font-medium text-accent-primary hover:underline truncate"
+              title={templateTitle || "Select template"}
+            >
+              {templateTitle || "—"}
+            </button>
+            {onTemplatesOpen ? (
+              <button
+                type="button"
+                onClick={(event) => {
+                  event.stopPropagation();
+                  onTemplatesOpen();
+                }}
+                className="inline-flex h-7 w-7 items-center justify-center rounded-md border border-border text-ink-muted hover:text-ink hover:bg-gray-50"
+                aria-label="Open resume templates"
+                title="Open resume templates"
+              >
+                <FileCode size={14} />
+              </button>
+            ) : null}
+          </div>
         </div>
 
         <div className={`${cellClass} text-sm text-ink`}>
-          {bidder ? <span className="font-medium">{bidder}</span> : <span className="text-ink-muted">Unassigned</span>}
+          {canManageBidder ? (
+            <button
+              type="button"
+              onClick={(event) => {
+                event.stopPropagation();
+                onBidderRequest();
+              }}
+              className="w-full text-left rounded-md px-2 py-1 -mx-2 -my-1 transition-colors hover:bg-gray-50"
+            >
+              {bidder ? (
+                <span className="font-medium">{bidder}</span>
+              ) : (
+                <span className="text-ink-muted">Unassigned</span>
+              )}
+            </button>
+          ) : bidder ? (
+            <span className="font-medium">{bidder}</span>
+          ) : (
+            <span className="text-ink-muted">Unassigned</span>
+          )}
         </div>
 
         <div className={`${cellClass} text-sm text-ink justify-start`}>
@@ -97,17 +177,19 @@ const ProfileRow = ({ profile, onOpen, onTemplateClick, onMore, gridTemplate }) 
             >
               <Eye size={18} />
             </button>
-            <button
-              type="button"
-              aria-label="Delete profile"
-              onClick={(e) => {
-                e.stopPropagation();
-                onMore();
-              }}
-              className="p-1.5 rounded-md text-ink-muted hover:text-red-600 hover:bg-red-50"
-            >
-              <Trash2 size={18} />
-            </button>
+            {isOwner ? (
+              <button
+                type="button"
+                aria-label="Delete profile"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onDelete?.();
+                }}
+                className="p-1.5 rounded-md text-ink-muted hover:text-red-600 hover:bg-red-50"
+              >
+                <Trash2 size={18} />
+              </button>
+            ) : null}
           </div>
         </div>
       </div>

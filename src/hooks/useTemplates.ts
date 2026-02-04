@@ -1,8 +1,7 @@
 import { useEffect, useState } from "react";
+import { API_BASE, TOKEN_KEY } from "../config";
 
-const API_BASE = "http://localhost:4000";
-const TOKEN_KEY = "authToken";
-const ENDPOINT = `${API_BASE}/templates`;
+const ENDPOINT = API_BASE ? `${API_BASE}/templates` : "/templates";
 
 export const useTemplates = () => {
   const [templates, setTemplates] = useState([]);

@@ -1,8 +1,6 @@
 /* global fetch */
 import { useState, useEffect } from "react";
-
-const API_BASE = "http://localhost:4000";
-const TOKEN_KEY = "authToken";
+import { API_BASE, TOKEN_KEY } from "../config";
 
 export const useUser = () => {
   const [user, setUser] = useState(null);
@@ -43,7 +41,7 @@ export const useUser = () => {
 
   const updateUser = async (partial) => {
     const token = typeof window !== "undefined" ? window.localStorage.getItem(TOKEN_KEY) : null;
-    if (!token || !user) return;
+    if (!token || !user) return null;
     setSaving(true);
     try {
       const res = await fetch(`${API_BASE}/auth/me`, {
@@ -52,20 +50,23 @@ export const useUser = () => {
           "Content-Type": "application/json",
           Authorization: `Bearer ${token}`
         },
-        body: JSON.stringify({ ...user, ...partial })
+        body: JSON.stringify(partial || {})
       });
       if (res.status === 401) {
         window.location.href = "/auth";
-        return;
+        return null;
       }
       if (!res.ok) {
         throw new Error((await res.text()) || "Unable to save profile.");
       }
       const updated = await res.json();
-      setUser(updated);
+      const nextUser = updated?.user ?? updated;
+      setUser(nextUser);
       setError("");
+      return nextUser;
     } catch (err) {
       setError(err.message || "Unable to save profile.");
+      return null;
     } finally {
       setSaving(false);
     }

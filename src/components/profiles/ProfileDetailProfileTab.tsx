@@ -1,17 +1,8 @@
-const getInitials = (name = "") =>
-  name
-    .split(" ")
-    .filter(Boolean)
-    .slice(0, 2)
-    .map((part) => part[0].toUpperCase())
-    .join("");
-
 const ProfileDetailProfileTab = ({
   visible,
   profileForm,
   updateProfileForm,
-  selectedBidder,
-  bidderOptions,
+  assignedBidderLabel,
   emailStatusLabel,
   emailActionLabel,
   onConnectEmail,
@@ -37,33 +28,9 @@ const ProfileDetailProfileTab = ({
       />
     </div>
     <div className="flex flex-col gap-1">
-      <label className="text-sm font-medium text-ink">Assigned Bidder</label>
-      <div className="flex items-center gap-3">
-        <div className="h-9 w-9 rounded-full bg-gray-100 text-ink-muted flex items-center justify-center text-xs font-semibold">
-          {selectedBidder?.avatar ? (
-            <img
-              src={selectedBidder.avatar}
-              alt={selectedBidder.name}
-              className="h-full w-full rounded-full object-cover"
-            />
-          ) : selectedBidder?.name ? (
-            getInitials(selectedBidder.name)
-          ) : (
-            "-"
-          )}
-        </div>
-        <select
-          className="w-full rounded-lg border border-border px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-accent-primary/40"
-          value={profileForm.assignedBidderId}
-          onChange={(event) => updateProfileForm("assignedBidderId", event.target.value)}
-        >
-          <option value="">Unassigned</option>
-          {bidderOptions.map((bidder) => (
-            <option key={bidder.id} value={bidder.id}>
-              {bidder.name}
-            </option>
-          ))}
-        </select>
+      <label className="text-sm font-medium text-ink">Assigned Employee</label>
+      <div className="rounded-lg border border-border bg-gray-50 px-3 py-2 text-sm text-ink">
+        {assignedBidderLabel || "Unassigned"}
       </div>
     </div>
     <div className="flex flex-col gap-1">

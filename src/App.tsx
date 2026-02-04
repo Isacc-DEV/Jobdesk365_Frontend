@@ -8,8 +8,14 @@ import { useAuthGuard } from "./hooks/useAuthGuard";
 import DashboardPage from "./components/dashboard/DashboardPage";
 import InboxPage from "./components/inbox/InboxPage";
 import CalendarPage from "./components/calendar/CalendarPage";
-import ChatPage from "./components/chat/ChatPage";
 import SettingsPage from "./components/settings/SettingsPage";
+import ResumeGeneratorPage from "./components/resume/ResumeGeneratorPage";
+import ResumeTemplatesPage from "./components/resume/ResumeTemplatesPage";
+import ApplicationsPage from "./components/applications/ApplicationsPage";
+import RequestsPage from "./components/hire/RequestsPage";
+import TalentsPage from "./components/hire/TalentsPage";
+import AdminPage from "./components/admin/AdminPage";
+import LandingPage from "./components/landing/LandingPage";
 
 const App = () => {
   const [sidebarExpanded, setSidebarExpanded] = useState(false);
@@ -31,17 +37,27 @@ const App = () => {
   }, []);
 
   const isAuthRoute = route.startsWith("/auth");
+  const isLandingRoute = route === "/" || route.startsWith("/landing");
   const isUserRoute = route.startsWith("/user");
   const isProfilesRoute = route.startsWith("/profiles");
   const isInboxRoute = route.startsWith("/inbox");
   const isCalendarRoute = route.startsWith("/calendar");
-  const isChatRoute = route.startsWith("/chat");
   const isSettingsRoute = route.startsWith("/settings");
+  const isResumeGeneratorRoute = route.startsWith("/resume-generator");
+  const isResumeTemplatesRoute = route.startsWith("/resume-templates");
+  const isApplicationsRoute = route.startsWith("/applications");
+  const isTalentsRoute = route.startsWith("/hire-talents");
+  const isRequestsRoute = route.startsWith("/requests") || (route.startsWith("/hire") && !isTalentsRoute);
+  const isAdminRoute = route.startsWith("/admin");
   const isDashboardRoute = route === "/" || route === "/dashboard";
   const { isAuthed, authChecked } = useAuthGuard();
 
   if (!authChecked) {
-    return null;
+    return (
+      <div className="min-h-screen bg-page text-ink flex items-center justify-center">
+        <p className="text-ink-muted">Checking session...</p>
+      </div>
+    );
   }
 
   if (isAuthRoute) {
@@ -49,17 +65,30 @@ const App = () => {
   }
 
   if (!isAuthed) {
-    return null;
+    if (isLandingRoute) {
+      return <LandingPage onNavigate={navigate} />;
+    }
+    return <AuthPage />;
   }
 
   const searchPlaceholder = isInboxRoute
     ? "Search emails..."
     : isCalendarRoute
     ? "Search events..."
-    : isChatRoute
-    ? "Search conversations..."
     : isSettingsRoute
     ? "Search settings..."
+    : isResumeGeneratorRoute
+    ? "Search profiles, job descriptions..."
+    : isResumeTemplatesRoute
+    ? "Search templates..."
+    : isApplicationsRoute
+    ? "Search applications..."
+    : isRequestsRoute
+    ? "Search requests..."
+    : isTalentsRoute
+    ? "Search talents..."
+    : isAdminRoute
+    ? "Search users..."
     : "Search profiles, emails, people...";
 
   const shell = (content) => (
@@ -97,12 +126,36 @@ const App = () => {
     return shell(<CalendarPage />);
   }
 
-  if (isChatRoute) {
-    return shell(<ChatPage />);
-  }
-
   if (isSettingsRoute) {
     return shell(<SettingsPage />);
+  }
+
+  if (isResumeGeneratorRoute) {
+    return shell(<ResumeGeneratorPage />);
+  }
+
+  if (isResumeTemplatesRoute) {
+    return shell(<ResumeTemplatesPage />);
+  }
+
+  if (isApplicationsRoute) {
+    return shell(<ApplicationsPage />);
+  }
+
+  if (isTalentsRoute) {
+    return shell(<TalentsPage />);
+  }
+
+  if (isRequestsRoute) {
+    return shell(<RequestsPage />);
+  }
+
+  if (isAdminRoute) {
+    return shell(<AdminPage />);
+  }
+
+  if (route.startsWith("/landing")) {
+    return <LandingPage onNavigate={navigate} />;
   }
 
   if (isDashboardRoute) {

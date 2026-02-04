@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import { X } from "lucide-react";
 import ProfileDetailProfileTab from "./ProfileDetailProfileTab";
@@ -21,6 +21,15 @@ const normalizeEmailStatus = (status, fallbackConnected) => {
   return "not_connected";
 };
 
+const formatPersonLabel = (person) =>
+  person?.name ||
+  person?.display_name ||
+  person?.displayName ||
+  person?.username ||
+  person?.email ||
+  person?.id ||
+  "";
+
 const buildProfileForm = (profile) => {
   const raw = profile?.raw || {};
   const baseInfo = raw.base_info || raw.baseInfo || {};
@@ -40,7 +49,11 @@ const buildBaseInfoForm = (profile) => {
     prefix: baseInfo.prefix || baseInfo.name_prefix || "",
     firstName: baseInfo.first_name || baseInfo.firstName || "",
     lastName: baseInfo.last_name || baseInfo.lastName || "",
-    desiredSalary: baseInfo.desired_annual_salary || baseInfo.desiredAnnualSalary || "",
+    desiredSalary:
+      baseInfo.desired_annual_salary ||
+      baseInfo.desiredAnnualSalary ||
+      baseInfo.desiredSalary ||
+      "",
     currentSalary: baseInfo.current_salary || baseInfo.currentSalary || "",
     noticePeriod: baseInfo.notice_period || baseInfo.noticePeriod || "",
     currency: baseInfo.currency || "USD",
@@ -195,7 +208,6 @@ type ProfileDetailPanelProps = {
   open: boolean;
   onClose: () => void;
   profile?: any;
-  bidders?: any[];
   onSaveProfile?: (payload: any) => Promise<void> | void;
   onSaveBaseInfo?: (payload: any) => Promise<void> | void;
   onSaveBaseResume?: (payload: any) => Promise<void> | void;
@@ -207,7 +219,6 @@ const ProfileDetailPanel = ({
   open,
   onClose,
   profile,
-  bidders = [],
   onSaveProfile,
   onSaveBaseInfo,
   onSaveBaseResume,
@@ -234,17 +245,6 @@ const ProfileDetailPanel = ({
     setActiveTab("profile");
     setSkillsInput("");
   }, [profile]);
-
-  const bidderOptions = useMemo(() => {
-    if (Array.isArray(bidders) && bidders.length > 0) return bidders;
-    const raw = profile?.raw;
-    if (Array.isArray(raw?.bidders)) return raw.bidders;
-    return [];
-  }, [bidders, profile]);
-
-  const selectedBidder = bidderOptions.find(
-    (bidder) => String(bidder.id) === String(profileForm.assignedBidderId)
-  );
 
   const markDirty = (tab) => {
     setDirtyTabs((prev) => (prev[tab] ? prev : { ...prev, [tab]: true }));
@@ -351,6 +351,15 @@ const ProfileDetailPanel = ({
       : profileForm.emailStatus === "not_connected"
       ? "Connect"
       : null;
+  const assignedBidderLabel =
+    profile?.assignedBidderLabel ||
+    formatPersonLabel({
+      name: profile?.raw?.assigned_bidder_display_name,
+      username: profile?.raw?.assigned_bidder_username,
+      email: profile?.raw?.assigned_bidder_email,
+      id: profile?.raw?.assigned_bidder_user_id
+    }) ||
+    "";
 
   const handleConnectEmail = () => {
     if (profile?.id) {
@@ -380,103 +389,104 @@ const ProfileDetailPanel = ({
   };
 
   const panel = (
-    <aside
-      aria-hidden={!open}
-      style={{ right: 0, top: 0, bottom: 0, height: "100vh" }}
-      className={`fixed z-50 w-[460px] max-w-[calc(100vw-1rem)] rounded-l-2xl rounded-r-none bg-white shadow-[-12px_0_24px_rgba(15,23,42,0.12)] ring-1 ring-black/5 transition-all duration-300 ease-out ${
-        open ? "translate-x-0 opacity-100" : "translate-x-full opacity-0 pointer-events-none"
-      }`}
-    >
-      <div className="flex h-full flex-col overflow-hidden">
-        <div className="flex-1 overflow-y-auto">
-            <div className="sticky top-0 z-20 bg-white">
-              <div className="flex items-start justify-between gap-4 px-5 py-4 border-b border-border">
-                <div>
-                  <h2 className="text-lg font-semibold text-ink">Profile Details</h2>
-                  <p className="text-xs text-ink-muted">Manage profile data and base records.</p>
-                </div>
-                <div className="flex items-center gap-2">
-                  <button
-                    type="button"
-                    onClick={handleSave}
-                    disabled={!dirtyTabs[activeTab] || Boolean(savingTab)}
-                    className="px-3 py-1.5 rounded-lg bg-accent-primary text-white text-sm font-semibold disabled:opacity-60 disabled:cursor-not-allowed"
-                  >
-                    {savingTab === activeTab ? "Saving..." : "Save"}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={onClose}
-                    className="p-2 rounded-md text-ink-muted hover:text-ink hover:bg-gray-100"
-                    aria-label="Close"
-                  >
-                    <X size={18} />
-                  </button>
-                </div>
-              </div>
-              <div className="flex flex-wrap items-center gap-2 px-5 py-3 border-b border-border bg-white">
-                {tabs.map((tab) => {
-                  const isActive = activeTab === tab.id;
-                  return (
+    <>
+      <aside
+        aria-hidden={!open}
+        style={{ right: 0, top: 0, bottom: 0, height: "100vh" }}
+        className={`fixed z-50 w-[460px] max-w-[calc(100vw-1rem)] rounded-l-2xl rounded-r-none bg-white shadow-[-12px_0_24px_rgba(15,23,42,0.12)] ring-1 ring-black/5 transition-all duration-300 ease-out ${
+          open ? "translate-x-0 opacity-100" : "translate-x-full opacity-0 pointer-events-none"
+        }`}
+      >
+        <div className="flex h-full flex-col overflow-hidden">
+          <div className="flex-1 overflow-y-auto">
+              <div className="sticky top-0 z-20 bg-white">
+                <div className="flex items-start justify-between gap-4 px-5 py-4 border-b border-border">
+                  <div>
+                    <h2 className="text-lg font-semibold text-ink">Profile Details</h2>
+                    <p className="text-xs text-ink-muted">Manage profile data and base records.</p>
+                  </div>
+                  <div className="flex items-center gap-2">
                     <button
-                      key={tab.id}
                       type="button"
-                      role="tab"
-                      aria-selected={isActive}
-                      onClick={() => setActiveTab(tab.id)}
-                      className={`flex items-center gap-1.5 rounded-full px-3 py-1.5 text-sm font-semibold transition-colors ${
-                        isActive
-                          ? "bg-accent-primary/10 text-accent-primary"
-                          : "text-ink-muted hover:text-ink hover:bg-gray-100"
-                      }`}
+                      onClick={handleSave}
+                      disabled={!dirtyTabs[activeTab] || Boolean(savingTab)}
+                      className="px-3 py-1.5 rounded-lg bg-accent-primary text-white text-sm font-semibold disabled:opacity-60 disabled:cursor-not-allowed"
                     >
-                      <span>{tab.label}</span>
-                      {dirtyTabs[tab.id] ? (
-                        <span className="inline-block h-1.5 w-1.5 rounded-full bg-amber-500" />
-                      ) : null}
+                      {savingTab === activeTab ? "Saving..." : "Save"}
                     </button>
-                  );
-                })}
+                    <button
+                      type="button"
+                      onClick={onClose}
+                      className="p-2 rounded-md text-ink-muted hover:text-ink hover:bg-gray-100"
+                      aria-label="Close"
+                    >
+                      <X size={18} />
+                    </button>
+                  </div>
+                </div>
+                <div className="flex flex-wrap items-center gap-2 px-5 py-3 border-b border-border bg-white">
+                  {tabs.map((tab) => {
+                    const isActive = activeTab === tab.id;
+                    return (
+                      <button
+                        key={tab.id}
+                        type="button"
+                        role="tab"
+                        aria-selected={isActive}
+                        onClick={() => setActiveTab(tab.id)}
+                        className={`flex items-center gap-1.5 rounded-full px-3 py-1.5 text-sm font-semibold transition-colors ${
+                          isActive
+                            ? "bg-accent-primary/10 text-accent-primary"
+                            : "text-ink-muted hover:text-ink hover:bg-gray-100"
+                        }`}
+                      >
+                        <span>{tab.label}</span>
+                        {dirtyTabs[tab.id] ? (
+                          <span className="inline-block h-1.5 w-1.5 rounded-full bg-amber-500" />
+                        ) : null}
+                      </button>
+                    );
+                  })}
+                </div>
               </div>
-            </div>
 
-            <div className="px-5 py-5 space-y-6">
+              <div className="px-5 py-5 space-y-6">
               <ProfileDetailProfileTab
                 visible={activeTab === "profile"}
                 profileForm={profileForm}
                 updateProfileForm={updateProfileForm}
-                selectedBidder={selectedBidder}
-                bidderOptions={bidderOptions}
+                assignedBidderLabel={assignedBidderLabel}
                 emailStatusLabel={emailStatusLabel}
                 emailActionLabel={emailActionLabel}
                 onConnectEmail={handleConnectEmail}
                 emailConnecting={emailConnecting}
               />
-              <ProfileDetailBaseInfoTab
-                visible={activeTab === "baseInfo"}
-                baseInfoForm={baseInfoForm}
-                updateBaseInfoForm={updateBaseInfoForm}
-                onImportJson={handleImportBaseInfo}
-                onExportJson={handleExportBaseInfo}
-              />
-              <ProfileDetailBaseResumeTab
-                visible={activeTab === "baseResume"}
-                resumeForm={resumeForm}
-                skillsInput={skillsInput}
-                setSkillsInput={setSkillsInput}
-                handleSkillKeyDown={handleSkillKeyDown}
-                removeSkill={removeSkill}
-                addExperience={addExperience}
-                removeExperience={removeExperience}
-                updateExperience={updateExperience}
-                updateResumeForm={updateResumeForm}
-                onImportJson={handleImportBaseResume}
-                onExportJson={handleExportBaseResume}
-              />
+                <ProfileDetailBaseInfoTab
+                  visible={activeTab === "baseInfo"}
+                  baseInfoForm={baseInfoForm}
+                  updateBaseInfoForm={updateBaseInfoForm}
+                  onImportJson={handleImportBaseInfo}
+                  onExportJson={handleExportBaseInfo}
+                />
+                <ProfileDetailBaseResumeTab
+                  visible={activeTab === "baseResume"}
+                  resumeForm={resumeForm}
+                  skillsInput={skillsInput}
+                  setSkillsInput={setSkillsInput}
+                  handleSkillKeyDown={handleSkillKeyDown}
+                  removeSkill={removeSkill}
+                  addExperience={addExperience}
+                  removeExperience={removeExperience}
+                  updateExperience={updateExperience}
+                  updateResumeForm={updateResumeForm}
+                  onImportJson={handleImportBaseResume}
+                  onExportJson={handleExportBaseResume}
+                />
+              </div>
             </div>
           </div>
-        </div>
-      </aside>
+        </aside>
+    </>
   );
 
   if (typeof document === "undefined") return null;

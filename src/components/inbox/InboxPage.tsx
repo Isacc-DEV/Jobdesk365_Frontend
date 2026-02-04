@@ -6,11 +6,10 @@ import {
   Mail,
   RefreshCw,
   Settings,
-  Trash2
+  Trash2,
+  X
 } from "lucide-react";
-
-const API_BASE = "http://localhost:4000";
-const TOKEN_KEY = "authToken";
+import { API_BASE, TOKEN_KEY } from "../../config";
 
 const formatTimestamp = (value) => {
   if (!value) return "";
@@ -24,6 +23,22 @@ const formatTimestamp = (value) => {
     return date.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
   }
   return date.toLocaleDateString();
+};
+
+const formatDateTime = (value) => {
+  if (!value) return "";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "";
+  return date.toLocaleString();
+};
+
+const extractBodyText = (body, bodyType) => {
+  if (!body) return "";
+  if (String(bodyType || "").toLowerCase() === "html" && typeof window !== "undefined") {
+    const doc = new DOMParser().parseFromString(body, "text/html");
+    return doc.body?.textContent || "";
+  }
+  return body;
 };
 
 const normalizeAccount = (account) => ({
@@ -53,6 +68,22 @@ const InboxPage = () => {
   const [emails, setEmails] = useState([]);
   const [emailsLoading, setEmailsLoading] = useState(false);
   const [emailsError, setEmailsError] = useState(null);
+  const [detailOpen, setDetailOpen] = useState(false);
+  const [selectedEmail, setSelectedEmail] = useState(null);
+  const [detailLoading, setDetailLoading] = useState(false);
+  const [detailError, setDetailError] = useState(null);
+  const [detailData, setDetailData] = useState(null);
+  const [querySelection, setQuerySelection] = useState(() => {
+    if (typeof window === "undefined") {
+      return { accountId: null, profileId: null };
+    }
+    const params = new URLSearchParams(window.location.search);
+    return {
+      accountId: params.get("account_id"),
+      profileId: params.get("profile_id")
+    };
+  });
+  const [queryApplied, setQueryApplied] = useState(false);
 
   const loadAccounts = useCallback(async (signal) => {
     const token = typeof window !== "undefined"
@@ -181,10 +212,45 @@ const InboxPage = () => {
       setActiveAccountId(null);
       return;
     }
+    if (!queryApplied) {
+      let nextAccountId = null;
+      if (querySelection.accountId && accounts.some((account) => account.id === querySelection.accountId)) {
+        nextAccountId = querySelection.accountId;
+      } else if (querySelection.profileId) {
+        const match = accounts.find(
+          (account) => String(account.profileId) === String(querySelection.profileId)
+        );
+        if (match) {
+          nextAccountId = match.id;
+        }
+      }
+      setQueryApplied(true);
+      if (nextAccountId) {
+        setActiveAccountId(nextAccountId);
+        return;
+      }
+    }
     if (!activeAccountId || !accounts.some((account) => account.id === activeAccountId)) {
       setActiveAccountId(accounts[0].id);
     }
-  }, [accounts, activeAccountId]);
+  }, [accounts, activeAccountId, queryApplied, querySelection]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const readQuery = () => {
+      const params = new URLSearchParams(window.location.search);
+      return {
+        accountId: params.get("account_id"),
+        profileId: params.get("profile_id")
+      };
+    };
+    const handlePop = () => {
+      setQuerySelection(readQuery());
+      setQueryApplied(false);
+    };
+    window.addEventListener("popstate", handlePop);
+    return () => window.removeEventListener("popstate", handlePop);
+  }, []);
 
   useEffect(() => {
     if (!activeAccountId) {
@@ -230,11 +296,196 @@ const InboxPage = () => {
     }
   };
 
+  const markEmailRead = async (emailId) => {
+    const token = typeof window !== "undefined"
+      ? window.localStorage.getItem(TOKEN_KEY)
+      : null;
+    if (!token || !emailId) return;
+    try {
+      const res = await fetch(`${API_BASE}/email/messages/${emailId}/read`, {
+        method: "PATCH",
+        headers: {
+          Authorization: `Bearer ${token}`
+        }
+      });
+      if (res.status === 401 && typeof window !== "undefined") {
+        window.location.href = "/auth";
+      }
+    } catch (err) {
+      // Best-effort: keep UI responsive even if request fails.
+    }
+  };
+
+  const handleOpenEmail = (email) => {
+    if (email?.unread) {
+      setEmails((prev) =>
+        prev.map((item) => (item.id === email.id ? { ...item, unread: false } : item))
+      );
+      setAccounts((prev) =>
+        prev.map((account) =>
+          account.id === email.accountId
+            ? { ...account, unread: Math.max(0, (account.unread ?? 0) - 1) }
+            : account
+        )
+      );
+      markEmailRead(email.id);
+    }
+    setSelectedEmail(email?.unread ? { ...email, unread: false } : email);
+    setDetailOpen(true);
+    setDetailError(null);
+    setDetailData(null);
+  };
+
+  const handleCloseDetail = () => {
+    setDetailOpen(false);
+    setDetailError(null);
+    setDetailData(null);
+    setSelectedEmail(null);
+  };
+
+  useEffect(() => {
+    if (!detailOpen || !selectedEmail?.id) return;
+    const controller = new AbortController();
+
+    const loadDetail = async () => {
+      const token = typeof window !== "undefined"
+        ? window.localStorage.getItem(TOKEN_KEY)
+        : null;
+      if (!token) {
+        setDetailError("Missing token");
+        setDetailLoading(false);
+        return;
+      }
+      try {
+        setDetailLoading(true);
+        setDetailError(null);
+        const res = await fetch(`${API_BASE}/email/messages/${selectedEmail.id}`, {
+          signal: controller.signal,
+          headers: {
+            Authorization: `Bearer ${token}`
+          }
+        });
+        if (res.status === 401 && typeof window !== "undefined") {
+          window.location.href = "/auth";
+          return;
+        }
+        if (!res.ok) {
+          const payload = await res.json().catch(() => ({}));
+          throw new Error(payload?.message || `Failed to load email (${res.status})`);
+        }
+        const data = await res.json();
+        setDetailData(data);
+      } catch (err) {
+        if (err.name !== "AbortError") {
+          setDetailError(err.message || "Unable to load email.");
+        }
+      } finally {
+        setDetailLoading(false);
+      }
+    };
+
+    loadDetail();
+    return () => controller.abort();
+  }, [detailOpen, selectedEmail?.id]);
+
+  const listContent = !activeAccount ? (
+    <div className="rounded-2xl border border-border bg-white p-6 text-center">
+      <p className="text-sm text-ink-muted">Connect an email account to view your inbox.</p>
+      <button
+        type="button"
+        onClick={handleConnectEmail}
+        className="mt-4 rounded-xl bg-accent-primary px-4 py-2 text-sm font-semibold text-white"
+      >
+        Go to profiles
+      </button>
+    </div>
+  ) : emailsLoading ? (
+    <div className="rounded-2xl border border-border bg-white p-6 text-center">
+      <p className="text-sm text-ink-muted">Loading emails...</p>
+    </div>
+  ) : emailsError ? (
+    <div className="rounded-2xl border border-border bg-white p-6 text-center">
+      <p className="text-sm text-red-600">Couldn&apos;t load emails.</p>
+      <button
+        type="button"
+        onClick={handleSync}
+        className="mt-4 rounded-xl border border-border px-4 py-2 text-sm font-semibold text-ink-muted hover:text-ink"
+      >
+        Try again
+      </button>
+    </div>
+  ) : visibleEmails.length === 0 ? (
+    <div className="rounded-2xl border border-border bg-white p-6 text-center">
+      <p className="text-sm text-ink-muted">No emails in this inbox.</p>
+      <button
+        type="button"
+        onClick={handleSync}
+        className="mt-4 rounded-xl bg-accent-primary px-4 py-2 text-sm font-semibold text-white"
+      >
+        Sync now
+      </button>
+    </div>
+  ) : (
+    <div className="max-h-[520px] overflow-y-auto pr-2">
+      <div className="space-y-3">
+        {visibleEmails.map((email) => (
+          <div
+            key={email.id}
+            role="button"
+            tabIndex={0}
+            aria-label={`Open email from ${email.from}`}
+            onClick={() => handleOpenEmail(email)}
+            onKeyDown={(event) => {
+              if (event.key === "Enter" || event.key === " ") {
+                event.preventDefault();
+                handleOpenEmail(email);
+              }
+            }}
+            className="rounded-2xl border border-border bg-white px-5 py-4 shadow-sm cursor-pointer transition-colors hover:bg-gray-50"
+          >
+            <div className="flex items-start gap-4">
+              <input
+                type="checkbox"
+                className="mt-1 h-4 w-4 rounded border-border"
+                aria-label={`Select email from ${email.from}`}
+                onClick={(event) => event.stopPropagation()}
+              />
+              <div className="min-w-0 flex-1">
+                <div className="flex items-center gap-2">
+                  <span
+                    className={`text-sm ${
+                      email.unread ? "font-semibold text-ink" : "text-ink"
+                    }`}
+                  >
+                    {email.from}
+                  </span>
+                  {email.unread ? (
+                    <span className="h-2 w-2 rounded-full bg-accent-primary" />
+                  ) : null}
+                </div>
+                <p
+                  className={`text-sm ${
+                    email.unread ? "font-semibold text-ink" : "text-ink"
+                  }`}
+                >
+                  {email.subject}
+                </p>
+                <p className="text-xs text-ink-muted">
+                  {activeAccount?.email} - {email.time}
+                </p>
+              </div>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+
   return (
-    <main className="bg-main min-h-[calc(100vh-64px)] border-t border-border px-6 py-6">
+    <main className=" min-h-[calc(100vh-64px)] px-6 py-6">
       <div className="mx-auto flex flex-col gap-6">
         <div className="grid grid-cols-[260px_1fr] gap-6">
-          <aside className="rounded-2xl border border-border bg-white p-4 shadow-sm">
+          <aside className="border border-border bg-white p-4 shadow-sm">
             <div className="text-xs font-semibold uppercase tracking-[0.18em] text-ink-muted">
               Email Accounts
             </div>
@@ -253,19 +504,19 @@ const InboxPage = () => {
                       key={account.id}
                       type="button"
                       onClick={() => setActiveAccountId(account.id)}
-                      className={`w-full flex items-center justify-between rounded-xl px-3 py-2 text-sm font-semibold transition-colors ${
+                      className={`w-full min-w-0 flex items-center justify-between rounded-xl px-3 py-2 text-sm font-semibold transition-colors ${
                         isActive
                           ? "bg-accent-primary/10 text-accent-primary"
                           : "text-ink-muted hover:text-ink hover:bg-gray-100"
                       }`}
                     >
-                      <span className="flex items-center gap-2">
+                      <span className="flex min-w-0 items-center gap-2">
                         <span
-                          className={`h-2.5 w-2.5 rounded-full ${
+                          className={`h-2.5 w-2.5 flex-shrink-0 rounded-full ${
                             isActive ? "bg-accent-primary" : "bg-gray-300"
                           }`}
                         />
-                        {account.email}
+                        <span className="min-w-0 truncate text-left">{account.email}</span>
                       </span>
                       <span className="text-xs text-ink-muted">({account.unread})</span>
                     </button>
@@ -283,7 +534,7 @@ const InboxPage = () => {
             </button>
           </aside>
 
-          <section className="flex flex-col gap-4">
+          <section className="border border-border bg-white p-4 shadow-sm flex flex-col gap-4">
             <header>
               <h1 className="text-2xl font-semibold text-ink">Inbox</h1>
               <p className="text-sm text-ink-muted">
@@ -362,85 +613,83 @@ const InboxPage = () => {
               </div>
             </div>
 
-            {!activeAccount ? (
-              <div className="rounded-2xl border border-border bg-white p-6 text-center">
-                <p className="text-sm text-ink-muted">Connect an email account to view your inbox.</p>
-                <button
-                  type="button"
-                  onClick={handleConnectEmail}
-                  className="mt-4 rounded-xl bg-accent-primary px-4 py-2 text-sm font-semibold text-white"
-                >
-                  Go to profiles
-                </button>
-              </div>
-            ) : emailsLoading ? (
-              <div className="rounded-2xl border border-border bg-white p-6 text-center">
-                <p className="text-sm text-ink-muted">Loading emails...</p>
-              </div>
-            ) : emailsError ? (
-              <div className="rounded-2xl border border-border bg-white p-6 text-center">
-                <p className="text-sm text-red-600">Couldn&apos;t load emails.</p>
-                <button
-                  type="button"
-                  onClick={handleSync}
-                  className="mt-4 rounded-xl border border-border px-4 py-2 text-sm font-semibold text-ink-muted hover:text-ink"
-                >
-                  Try again
-                </button>
-              </div>
-            ) : visibleEmails.length === 0 ? (
-              <div className="rounded-2xl border border-border bg-white p-6 text-center">
-                <p className="text-sm text-ink-muted">No emails in this inbox.</p>
-                <button
-                  type="button"
-                  onClick={handleSync}
-                  className="mt-4 rounded-xl bg-accent-primary px-4 py-2 text-sm font-semibold text-white"
-                >
-                  Sync now
-                </button>
-              </div>
-            ) : (
-              <div className="space-y-3">
-                {visibleEmails.map((email) => (
-                  <div
-                    key={email.id}
-                    className="rounded-2xl border border-border bg-white px-5 py-4 shadow-sm"
-                  >
-                    <div className="flex items-start gap-4">
-                      <input
-                        type="checkbox"
-                        className="mt-1 h-4 w-4 rounded border-border"
-                        aria-label={`Select email from ${email.from}`}
-                      />
-                      <div className="min-w-0 flex-1">
-                        <div className="flex items-center gap-2">
-                          <span
-                            className={`text-sm ${
-                              email.unread ? "font-semibold text-ink" : "text-ink"
-                            }`}
-                          >
-                            {email.from}
-                          </span>
-                          {email.unread ? (
-                            <span className="h-2 w-2 rounded-full bg-accent-primary" />
+            <div
+              className={`grid gap-4 ${
+                detailOpen
+                  ? "grid-cols-1 lg:grid-cols-[minmax(0,1fr)_360px] xl:grid-cols-[minmax(0,1fr)_420px]"
+                  : ""
+              }`}
+            >
+              <div>{listContent}</div>
+              {detailOpen ? (
+                <aside className="rounded-2xl border border-border bg-white shadow-sm">
+                  <div className="flex items-start justify-between gap-4 border-b border-border px-5 py-4">
+                    <div className="min-w-0">
+                      <h2 className="text-lg font-semibold text-ink truncate">
+                        {detailData?.subject || selectedEmail?.subject || "(No subject)"}
+                      </h2>
+                      <p className="text-xs text-ink-muted truncate">
+                        {detailData?.fromName && detailData?.from
+                          ? `${detailData.fromName} <${detailData.from}>`
+                          : detailData?.from || selectedEmail?.from || "Unknown sender"}
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={handleCloseDetail}
+                      className="p-2 rounded-md text-ink-muted hover:text-ink hover:bg-gray-100"
+                      aria-label="Close email"
+                    >
+                      <X size={18} />
+                    </button>
+                  </div>
+                  <div className="max-h-[calc(100vh-220px)] overflow-y-auto px-5 py-4 space-y-4">
+                    {detailLoading ? (
+                      <div className="text-sm text-ink-muted">Loading email...</div>
+                    ) : detailError ? (
+                      <div className="text-sm text-red-600">{detailError}</div>
+                    ) : detailData ? (
+                      <>
+                        <div className="space-y-1 text-xs text-ink-muted">
+                          <div>
+                            <span className="font-semibold text-ink">To:</span>{" "}
+                            {detailData.to?.length
+                              ? detailData.to.map((recipient) => recipient.name || recipient.email).join(", ")
+                              : "—"}
+                          </div>
+                          {detailData.cc?.length ? (
+                            <div>
+                              <span className="font-semibold text-ink">Cc:</span>{" "}
+                              {detailData.cc.map((recipient) => recipient.name || recipient.email).join(", ")}
+                            </div>
+                          ) : null}
+                          <div>
+                            <span className="font-semibold text-ink">Date:</span>{" "}
+                            {detailData.receivedAt
+                              ? formatDateTime(detailData.receivedAt)
+                              : selectedEmail?.time || "—"}
+                          </div>
+                          {detailData.accountEmail ? (
+                            <div>
+                              <span className="font-semibold text-ink">Account:</span> {detailData.accountEmail}
+                            </div>
                           ) : null}
                         </div>
-                        <p
-                          className={`text-sm ${
-                            email.unread ? "font-semibold text-ink" : "text-ink"
-                          }`}
-                        >
-                          {email.subject}
-                        </p>
-                        <p className="text-xs text-ink-muted">
-                          {activeAccount?.email} - {email.time}
-                        </p>
-                      </div>
-                    </div>
+                        <div className="border-t border-border pt-4">
+                          <div className="text-sm text-ink whitespace-pre-wrap">
+                            {extractBodyText(detailData.body, detailData.bodyType) ||
+                              detailData.snippet ||
+                              "No email content available."}
+                          </div>
+                        </div>
+                      </>
+                    ) : (
+                      <div className="text-sm text-ink-muted">Select an email to view details.</div>
+                    )}
                   </div>
-                ))}
-              </div>
-            )}
+                </aside>
+              ) : null}
+            </div>
           </section>
         </div>
       </div>

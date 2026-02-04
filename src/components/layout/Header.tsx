@@ -1,12 +1,37 @@
 import { useEffect, useRef, useState } from "react";
-import { Bell, ChevronDown, CircleUserRound, LogOut, Settings, User } from "lucide-react";
+import { Bell, ChevronDown, LogOut, Settings, User } from "lucide-react";
 import IconButton from "../common/IconButton";
 import SearchBar from "../common/SearchBar";
 import Logo from "./Logo";
+import { BACKEND_ORIGIN, TOKEN_KEY } from "../../config";
+import { useUser } from "../../hooks/useUser";
 
 const Header = ({ searchPlaceholder, onNavigate }) => {
+  const { user } = useUser();
   const [menuOpen, setMenuOpen] = useState(false);
+  const [avatarFailed, setAvatarFailed] = useState(false);
   const menuRef = useRef(null);
+
+  const resolveAvatarUrl = (value) => {
+    if (!value) return "";
+    const trimmed = String(value).trim();
+    if (!trimmed) return "";
+    if (/^https?:\/\//i.test(trimmed)) return trimmed;
+    const base = BACKEND_ORIGIN || (typeof window !== "undefined" ? window.location.origin : "");
+    if (!base) return trimmed.startsWith("/") ? trimmed : `/${trimmed}`;
+    return trimmed.startsWith("/") ? `${base}${trimmed}` : `${base}/${trimmed}`;
+  };
+
+  const displayName =
+    user?.display_name ||
+    user?.name ||
+    user?.username ||
+    (user?.email ? String(user.email).split("@")[0] : "User");
+  const avatarUrl = resolveAvatarUrl(user?.photo_link || "");
+
+  useEffect(() => {
+    setAvatarFailed(false);
+  }, [avatarUrl]);
 
   useEffect(() => {
     const handleClickOutside = (event) => {
@@ -38,7 +63,7 @@ const Header = ({ searchPlaceholder, onNavigate }) => {
 
   const handleLogout = () => {
     if (typeof window !== "undefined") {
-      window.localStorage.removeItem("authToken");
+      window.localStorage.removeItem(TOKEN_KEY);
       window.location.href = "/auth";
     }
   };
@@ -61,7 +86,18 @@ const Header = ({ searchPlaceholder, onNavigate }) => {
             aria-expanded={menuOpen}
             className="flex items-center gap-1.5 rounded-xl border border-border-soft bg-main px-2 py-1 text-ink transition duration-150 ease-out hover:border-ink-muted hover:-translate-y-[1px] hover:shadow-soft focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent-primary"
           >
-            <CircleUserRound size={18} strokeWidth={1.8} />
+            <div className="h-7 w-7 rounded-full border border-border bg-accent-primary/10 text-accent-primary grid place-items-center overflow-hidden">
+              {avatarUrl && !avatarFailed ? (
+                <img
+                  src={avatarUrl}
+                  alt={displayName}
+                  className="h-full w-full object-cover"
+                  onError={() => setAvatarFailed(true)}
+                />
+              ) : (
+                <span className="text-[11px] font-bold uppercase">{displayName?.[0] ?? "U"}</span>
+              )}
+            </div>
             <ChevronDown size={14} className="text-ink-muted" />
           </button>
           {menuOpen ? (

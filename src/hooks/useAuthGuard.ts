@@ -1,7 +1,6 @@
 import { useEffect, useState } from "react";
 import { isJwtValid } from "../lib/auth";
-
-const TOKEN_KEY = "authToken";
+import { TOKEN_KEY } from "../config";
 
 export const useAuthGuard = () => {
   const [authChecked, setAuthChecked] = useState(false);
@@ -13,8 +12,12 @@ export const useAuthGuard = () => {
     setIsAuthed(valid);
     setAuthChecked(true);
 
-    if (!valid && typeof window !== "undefined" && !window.location.pathname.startsWith("/auth")) {
-      window.location.href = "/auth";
+    if (!valid && typeof window !== "undefined") {
+      const path = window.location.pathname || "/";
+      const isPublicRoute = path === "/" || path.startsWith("/landing") || path.startsWith("/auth");
+      if (!isPublicRoute) {
+        window.location.href = "/auth";
+      }
     }
   }, []);
 

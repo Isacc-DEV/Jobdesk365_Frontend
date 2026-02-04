@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import type { ChangeEvent } from "react";
 import { useUser } from "../../hooks/useUser";
+import { API_BASE, BACKEND_ORIGIN, TOKEN_KEY } from "../../config";
 
 const labelClass = "text-sm font-semibold text-ink";
 const inputClass =
@@ -10,8 +11,7 @@ const tabs = [
   { id: "profile", label: "Profile" },
   { id: "security", label: "Security" },
   { id: "billing", label: "Billing/Payment" },
-  { id: "plan", label: "Plan" },
-  { id: "setting", label: "Setting" }
+  { id: "plan", label: "Plan" }
 ];
 
 const tabHeadings = {
@@ -31,10 +31,24 @@ const tabHeadings = {
     title: "Plan",
     subtitle: "Review your subscription and plan details."
   },
-  setting: {
-    title: "Setting",
-    subtitle: "Configure account preferences and defaults."
-  }
+};
+
+const FRAME_SIZE = 320;
+const CIRCLE_SIZE = 220;
+const OUTPUT_SIZE = 512;
+const ZOOM_MIN = 1;
+const ZOOM_MAX = 3;
+
+const resolveAvatarUrl = (value: string) => {
+  if (!value) return "";
+  const trimmed = value.trim();
+  if (!trimmed) return "";
+  if (/^https?:\/\//i.test(trimmed)) return trimmed;
+  const base =
+    BACKEND_ORIGIN ||
+    (typeof window !== "undefined" ? window.location.origin : "");
+  if (!base) return trimmed.startsWith("/") ? trimmed : `/${trimmed}`;
+  return trimmed.startsWith("/") ? `${base}${trimmed}` : `${base}/${trimmed}`;
 };
 
 type ProfileForm = {
@@ -60,6 +74,21 @@ const UserProfilePage = () => {
   const [form, setForm] = useState<ProfileForm>(emptyForm);
   const [saved, setSaved] = useState(false);
   const [activeTab, setActiveTab] = useState("profile");
+  const [avatarUploading, setAvatarUploading] = useState(false);
+  const [avatarError, setAvatarError] = useState("");
+  const [avatarSrc, setAvatarSrc] = useState("");
+  const [cropOpen, setCropOpen] = useState(false);
+  const [cropFile, setCropFile] = useState<File | null>(null);
+  const [cropPreview, setCropPreview] = useState("");
+  const [cropZoom, setCropZoom] = useState(1);
+  const [cropCenter, setCropCenter] = useState({ x: FRAME_SIZE / 2, y: FRAME_SIZE / 2 });
+  const [imageSize, setImageSize] = useState({ width: 0, height: 0 });
+  const [oldPassword, setOldPassword] = useState("");
+  const [newPassword, setNewPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [passwordError, setPasswordError] = useState("");
+  const [passwordSuccess, setPasswordSuccess] = useState("");
+  const [passwordSaving, setPasswordSaving] = useState(false);
 
   useEffect(() => {
     if (!user) return;
@@ -77,6 +106,68 @@ const UserProfilePage = () => {
       phone: user.phone || ""
     });
   }, [user]);
+
+  const photoLink = user?.photo_link || "";
+
+  useEffect(() => {
+    setAvatarSrc(resolveAvatarUrl(photoLink));
+  }, [photoLink]);
+
+  useEffect(() => {
+    if (!cropPreview) return;
+    const img = new Image();
+    img.onload = () => {
+      setImageSize({ width: img.naturalWidth, height: img.naturalHeight });
+    };
+    img.src = cropPreview;
+  }, [cropPreview]);
+
+  useEffect(() => {
+    if (!cropPreview) return;
+    return () => {
+      URL.revokeObjectURL(cropPreview);
+    };
+  }, [cropPreview]);
+
+  const getBaseScale = () => {
+    if (!imageSize.width || !imageSize.height) return 1;
+    return Math.min(FRAME_SIZE / imageSize.width, FRAME_SIZE / imageSize.height);
+  };
+
+  const getCircleSize = () => CIRCLE_SIZE / cropZoom;
+
+  const getImageRect = () => {
+    if (!imageSize.width || !imageSize.height) {
+      return { scale: 1, width: 0, height: 0, left: 0, top: 0 };
+    }
+    const scale = getBaseScale();
+    const width = imageSize.width * scale;
+    const height = imageSize.height * scale;
+    const left = (FRAME_SIZE - width) / 2;
+    const top = (FRAME_SIZE - height) / 2;
+    return { scale, width, height, left, top };
+  };
+
+  const clampCropCenter = (pos) => {
+    if (!imageSize.width || !imageSize.height) return pos;
+    const rect = getImageRect();
+    const radius = getCircleSize() / 2;
+    const minX = rect.left + radius;
+    const maxX = rect.left + rect.width - radius;
+    const minY = rect.top + radius;
+    const maxY = rect.top + rect.height - radius;
+    const clamp = (value, min, max) =>
+      min > max ? (min + max) / 2 : Math.max(min, Math.min(max, value));
+    return {
+      x: clamp(pos.x, minX, maxX),
+      y: clamp(pos.y, minY, maxY)
+    };
+  };
+
+  useEffect(() => {
+    setCropCenter((prev) => clampCropCenter(prev));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [cropZoom, imageSize.width, imageSize.height]);
 
   if (loading) {
     return (
@@ -96,6 +187,12 @@ const UserProfilePage = () => {
 
   if (!user) return null;
 
+  const displayName =
+    user.display_name ||
+    user.name ||
+    user.username ||
+    (user.email ? user.email.split("@")[0] : "User");
+
   const handleChange =
     (field: keyof ProfileForm) =>
     (e: ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
@@ -104,16 +201,231 @@ const UserProfilePage = () => {
 
   const handleSave = () => {
     if (activeTab !== "profile") return;
-    updateUser(form);
+    updateUser({ display_name: form.name, bio: form.bio });
     setSaved(true);
     window.setTimeout(() => setSaved(false), 2000);
   };
 
+  const handlePasswordSave = async () => {
+    setPasswordError("");
+    setPasswordSuccess("");
+    if (!oldPassword || !newPassword || !confirmPassword) {
+      setPasswordError("Please fill in all password fields.");
+      return;
+    }
+    if (newPassword !== confirmPassword) {
+      setPasswordError("Passwords do not match.");
+      return;
+    }
+    if (newPassword.length < 8) {
+      setPasswordError("Password must be at least 8 characters.");
+      return;
+    }
+    const token = typeof window !== "undefined" ? window.localStorage.getItem(TOKEN_KEY) : null;
+    if (!token) {
+      setPasswordError("Missing token.");
+      return;
+    }
+    setPasswordSaving(true);
+    try {
+      const endpoint = API_BASE ? `${API_BASE}/auth/password` : "/auth/password";
+      const res = await fetch(endpoint, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`
+        },
+        body: JSON.stringify({ old_password: oldPassword, new_password: newPassword })
+      });
+      if (res.status === 401) {
+        window.location.href = "/auth";
+        return;
+      }
+      if (!res.ok) {
+        const message = (await res.text()) || "Unable to change password.";
+        throw new Error(message);
+      }
+      setPasswordSuccess("Password updated.");
+      setOldPassword("");
+      setNewPassword("");
+      setConfirmPassword("");
+    } catch (err) {
+      setPasswordError(err.message || "Unable to change password.");
+    } finally {
+      setPasswordSaving(false);
+    }
+  };
+
+  const openCropper = (file: File) => {
+    const previewUrl = URL.createObjectURL(file);
+    setCropFile(file);
+    setCropPreview(previewUrl);
+    setCropZoom(1);
+    setCropCenter({ x: FRAME_SIZE / 2, y: FRAME_SIZE / 2 });
+    setAvatarError("");
+    setCropOpen(true);
+  };
+
+  const closeCropper = () => {
+    setCropOpen(false);
+    setCropFile(null);
+    setCropPreview("");
+    setCropZoom(1);
+    setCropCenter({ x: FRAME_SIZE / 2, y: FRAME_SIZE / 2 });
+    setImageSize({ width: 0, height: 0 });
+  };
+
+  const getPoint = (event) => {
+    if ("touches" in event && event.touches[0]) {
+      return { x: event.touches[0].clientX, y: event.touches[0].clientY };
+    }
+    return { x: event.clientX, y: event.clientY };
+  };
+
+  const handleCropDragStart = (event) => {
+    event.preventDefault();
+    const start = getPoint(event);
+    const startPos = cropCenter;
+    const handleMove = (moveEvent) => {
+      moveEvent.preventDefault();
+      const point = getPoint(moveEvent);
+      const next = {
+        x: startPos.x + (point.x - start.x),
+        y: startPos.y + (point.y - start.y)
+      };
+      setCropCenter(clampCropCenter(next));
+    };
+    const handleEnd = () => {
+      window.removeEventListener("mousemove", handleMove);
+      window.removeEventListener("mouseup", handleEnd);
+      window.removeEventListener("touchmove", handleMove);
+      window.removeEventListener("touchend", handleEnd);
+    };
+    window.addEventListener("mousemove", handleMove);
+    window.addEventListener("mouseup", handleEnd);
+    window.addEventListener("touchmove", handleMove, { passive: false });
+    window.addEventListener("touchend", handleEnd);
+  };
+
+  const createCroppedBlob = async () => {
+    if (!cropPreview || !imageSize.width || !imageSize.height) {
+      throw new Error("Image not ready.");
+    }
+    const img = new Image();
+    img.src = cropPreview;
+    await img.decode();
+    const canvas = document.createElement("canvas");
+    canvas.width = OUTPUT_SIZE;
+    canvas.height = OUTPUT_SIZE;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) {
+      throw new Error("Canvas not supported.");
+    }
+    const rect = getImageRect();
+    const radius = getCircleSize() / 2;
+    const cropLeft = (cropCenter.x - radius - rect.left) / rect.scale;
+    const cropTop = (cropCenter.y - radius - rect.top) / rect.scale;
+    const cropSize = getCircleSize() / rect.scale;
+    ctx.save();
+    ctx.beginPath();
+    ctx.arc(OUTPUT_SIZE / 2, OUTPUT_SIZE / 2, OUTPUT_SIZE / 2, 0, Math.PI * 2);
+    ctx.closePath();
+    ctx.clip();
+    ctx.drawImage(
+      img,
+      cropLeft,
+      cropTop,
+      cropSize,
+      cropSize,
+      0,
+      0,
+      OUTPUT_SIZE,
+      OUTPUT_SIZE
+    );
+    ctx.restore();
+    return new Promise<Blob>((resolve, reject) => {
+      canvas.toBlob((blob) => {
+        if (blob) resolve(blob);
+        else reject(new Error("Unable to crop image."));
+      }, "image/png", 0.92);
+    });
+  };
+
+  const uploadCroppedAvatar = async () => {
+    if (!cropFile) return;
+    const token = typeof window !== "undefined" ? window.localStorage.getItem(TOKEN_KEY) : null;
+    if (!token) {
+      setAvatarError("Missing token.");
+      return;
+    }
+    setAvatarUploading(true);
+    try {
+      const blob = await createCroppedBlob();
+      const filename = `avatar-${Date.now()}.png`;
+      const formData = new FormData();
+      formData.append("avatar", new File([blob], filename, { type: "image/png" }));
+      const endpoint = API_BASE ? `${API_BASE}/auth/me/avatar` : "/auth/me/avatar";
+      const res = await fetch(endpoint, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}` },
+        body: formData
+      });
+      if (res.status === 401) {
+        window.location.href = "/auth";
+        return;
+      }
+      if (!res.ok) {
+        const message = (await res.text()) || "Upload failed.";
+        throw new Error(message);
+      }
+      const data = await res.json();
+      const uploadedLink = data?.photo_link || data?.url || "";
+      if (!uploadedLink) throw new Error("Upload failed.");
+      const updated = await updateUser({ photo_link: uploadedLink });
+      if (updated) {
+        setAvatarSrc(resolveAvatarUrl(uploadedLink));
+        closeCropper();
+      } else {
+        setAvatarError("Unable to save avatar. Please check the API connection.");
+      }
+    } catch (err) {
+      setAvatarError(err.message || "Unable to upload avatar.");
+    } finally {
+      setAvatarUploading(false);
+    }
+  };
+
+  const handleAvatarChange = async (event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    setAvatarError("");
+    if (!file.type.startsWith("image/")) {
+      setAvatarError("Please select an image file.");
+      event.target.value = "";
+      return;
+    }
+    if (file.size > 5 * 1024 * 1024) {
+      setAvatarError("Please upload an image smaller than 5MB.");
+      event.target.value = "";
+      return;
+    }
+    openCropper(file);
+    event.target.value = "";
+  };
+
   const heading = tabHeadings[activeTab] || tabHeadings.profile;
+
+  const handleWheelZoom = (event) => {
+    event.preventDefault();
+    const delta = -event.deltaY;
+    const step = 0.002;
+    const next = Math.max(ZOOM_MIN, Math.min(ZOOM_MAX, cropZoom + delta * step));
+    setCropZoom(next);
+  };
 
   return (
     <main className="bg-main min-h-[calc(100vh-64px)] border-t border-border px-8 py-8">
-      <div className="max-w-1xl mx-auto grid grid-cols-[220px_1fr] gap-6">
+      <div className="max-w-[1440px] mx-auto grid grid-cols-[220px_1fr] gap-6">
         <aside className="rounded-2xl border border-border bg-white p-4 h-fit">
           <div className="space-y-1">
             {tabs.map((tab) => {
@@ -138,12 +450,41 @@ const UserProfilePage = () => {
 
         <section className="flex flex-col gap-6">
           <header className="flex items-center gap-4">
-            <div className="w-14 h-14 rounded-full bg-accent-primary/15 text-accent-primary font-bold text-xl grid place-items-center">
-              {user.name?.[0] ?? "U"}
-            </div>
-            <div>
-              <h1 className="text-2xl font-bold text-ink">{heading.title}</h1>
-              <p className="text-sm text-ink-muted">{heading.subtitle}</p>
+            <div className="flex items-center gap-4">
+              <div className="relative">
+                {avatarSrc ? (
+                  <div className="w-[72px] h-[72px] rounded-full overflow-hidden border border-border bg-white">
+                    <img
+                      src={avatarSrc}
+                      alt={displayName}
+                      className="w-full h-full object-cover object-center"
+                      onError={() => {
+                        setAvatarSrc("");
+                        setAvatarError("Avatar image is not accessible.");
+                      }}
+                    />
+                  </div>
+                ) : (
+                  <div className="w-[72px] h-[72px] rounded-full bg-accent-primary/15 text-accent-primary font-bold text-2xl grid place-items-center">
+                    {displayName?.[0] ?? "U"}
+                  </div>
+                )}
+                <label className="absolute -bottom-2 -right-2 cursor-pointer rounded-full bg-white border border-border px-2 py-1 text-[11px] font-semibold text-ink shadow-sm">
+                  {avatarUploading ? "Uploading..." : "Change"}
+                  <input
+                    type="file"
+                    accept="image/*"
+                    onChange={handleAvatarChange}
+                    className="hidden"
+                    disabled={avatarUploading}
+                  />
+                </label>
+              </div>
+              <div>
+                <h1 className="text-2xl font-bold text-ink">{heading.title}</h1>
+                <p className="text-sm text-ink-muted">{heading.subtitle}</p>
+                {avatarError ? <p className="text-xs text-red-500 mt-1">{avatarError}</p> : null}
+              </div>
             </div>
           </header>
 
@@ -163,14 +504,6 @@ const UserProfilePage = () => {
                     readOnly
                   />
                 </div>
-                <div className="space-y-2">
-                  <label className={labelClass}>Role / Title</label>
-                  <input className={inputClass} value={form.role || ""} onChange={handleChange("role")} />
-                </div>
-                <div className="space-y-2">
-                  <label className={labelClass}>Location</label>
-                  <input className={inputClass} value={form.location || ""} onChange={handleChange("location")} />
-                </div>
                 <div className="space-y-2 col-span-2">
                   <label className={labelClass}>Bio</label>
                   <textarea
@@ -178,10 +511,6 @@ const UserProfilePage = () => {
                     value={form.bio || ""}
                     onChange={handleChange("bio")}
                   />
-                </div>
-                <div className="space-y-2 col-span-2">
-                  <label className={labelClass}>Phone</label>
-                  <input className={inputClass} value={form.phone || ""} onChange={handleChange("phone")} />
                 </div>
               </div>
 
@@ -197,6 +526,72 @@ const UserProfilePage = () => {
                 {saved ? <span className="text-sm text-green-600">Saved</span> : null}
               </div>
             </>
+          ) : activeTab === "security" ? (
+            <div className="grid gap-6">
+              <div className="rounded-2xl border border-border bg-white p-6">
+                <h2 className="text-lg font-semibold text-ink">Change password</h2>
+                <p className="text-sm text-ink-muted mt-1">
+                  Update your password to keep your account secure.
+                </p>
+                <div className="mt-6 grid gap-4 max-w-md">
+                  <div className="space-y-2">
+                    <label className={labelClass}>Old password</label>
+                    <input
+                      type="password"
+                      className={inputClass}
+                      value={oldPassword}
+                      onChange={(event) => setOldPassword(event.target.value)}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <label className={labelClass}>New password</label>
+                    <input
+                      type="password"
+                      className={inputClass}
+                      value={newPassword}
+                      onChange={(event) => setNewPassword(event.target.value)}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <label className={labelClass}>Confirm new password</label>
+                    <input
+                      type="password"
+                      className={inputClass}
+                      value={confirmPassword}
+                      onChange={(event) => setConfirmPassword(event.target.value)}
+                    />
+                  </div>
+                  {passwordError ? <p className="text-sm text-red-500">{passwordError}</p> : null}
+                  {passwordSuccess ? <p className="text-sm text-green-600">{passwordSuccess}</p> : null}
+                  <button
+                    type="button"
+                    onClick={handlePasswordSave}
+                    disabled={passwordSaving}
+                    className="px-5 h-11 rounded-xl bg-accent-primary text-white font-semibold disabled:opacity-60"
+                  >
+                    {passwordSaving ? "Updating..." : "Update password"}
+                  </button>
+                </div>
+              </div>
+
+              <div className="rounded-2xl border border-border bg-white p-6">
+                <h2 className="text-lg font-semibold text-ink">Last login</h2>
+                <div className="mt-4 grid gap-2 text-sm text-ink">
+                  <div className="flex items-center justify-between border-b border-border pb-2">
+                    <span className="text-ink-muted">Time</span>
+                    <span>
+                      {user?.last_login_at
+                        ? new Date(user.last_login_at).toLocaleString()
+                        : "Not available"}
+                    </span>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-ink-muted">Place</span>
+                    <span>{user?.last_login_place || "Not available"}</span>
+                  </div>
+                </div>
+              </div>
+            </div>
           ) : (
             <div className="rounded-2xl border border-border bg-white p-6 text-sm text-ink-muted">
               {heading.subtitle}
@@ -204,6 +599,93 @@ const UserProfilePage = () => {
           )}
         </section>
       </div>
+      {cropOpen ? (
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
+          <div className="bg-white rounded-2xl shadow-xl p-6 w-[420px] max-w-[90vw]">
+            <div className="flex items-center justify-between">
+              <h2 className="text-lg font-semibold text-ink">Edit avatar</h2>
+              <button
+                type="button"
+                onClick={closeCropper}
+                className="text-sm text-ink-muted hover:text-ink"
+              >
+                Close
+              </button>
+            </div>
+            <div className="mt-5 flex flex-col items-center gap-4">
+              <div
+                className="relative rounded-2xl border border-border bg-[#F7F7F7] overflow-hidden"
+                style={{ width: FRAME_SIZE, height: FRAME_SIZE }}
+                onWheel={handleWheelZoom}
+              >
+                {cropPreview ? (
+                  <img
+                    src={cropPreview}
+                    alt="Avatar preview"
+                    className="absolute select-none pointer-events-none"
+                    style={{
+                      width: imageSize.width ? `${imageSize.width * getBaseScale()}px` : "auto",
+                      height: imageSize.height ? `${imageSize.height * getBaseScale()}px` : "auto",
+                      left: imageSize.width
+                        ? `${(FRAME_SIZE - imageSize.width * getBaseScale()) / 2}px`
+                        : "50%",
+                      top: imageSize.height
+                        ? `${(FRAME_SIZE - imageSize.height * getBaseScale()) / 2}px`
+                        : "50%",
+                      transform: imageSize.width ? "none" : "translate(-50%, -50%)",
+                      transformOrigin: "center"
+                    }}
+                    draggable={false}
+                  />
+                ) : null}
+                <div
+                  className="absolute rounded-full border-2 border-white shadow-[0_0_0_9999px_rgba(0,0,0,0.45)] cursor-grab"
+                  style={{
+                    width: getCircleSize(),
+                    height: getCircleSize(),
+                    left: cropCenter.x - getCircleSize() / 2,
+                    top: cropCenter.y - getCircleSize() / 2
+                  }}
+                  onMouseDown={handleCropDragStart}
+                  onTouchStart={handleCropDragStart}
+                />
+              </div>
+              <div className="w-full">
+                <label className="text-xs text-ink-muted">Zoom</label>
+                <input
+                  type="range"
+                  min={ZOOM_MIN}
+                  max={ZOOM_MAX}
+                  step="0.01"
+                  value={cropZoom}
+                  onChange={(event) => setCropZoom(Number(event.target.value))}
+                  className="w-full"
+                />
+              </div>
+              <div className="flex items-center gap-3">
+                <button
+                  type="button"
+                  onClick={closeCropper}
+                  className="px-4 h-10 rounded-xl border border-border text-sm font-semibold"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={uploadCroppedAvatar}
+                  disabled={avatarUploading || !cropPreview}
+                  className="px-4 h-10 rounded-xl bg-accent-primary text-white text-sm font-semibold disabled:opacity-60"
+                >
+                  {avatarUploading ? "Uploading..." : "Save"}
+                </button>
+              </div>
+              <p className="text-xs text-ink-muted text-center">
+                Drag the circle to select the area. Scroll or use zoom to resize the circle.
+              </p>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </main>
   );
 };

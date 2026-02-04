@@ -1,5 +1,6 @@
 /* global fetch */
 import { useState } from "react";
+import { API_BASE, TOKEN_KEY } from "../../config";
 import BrandPanel from "./BrandPanel";
 import AuthCard from "./AuthCard";
 import InputField from "./InputField";
@@ -16,7 +17,7 @@ const AuthPage = () => {
   const [loading, setLoading] = useState(false);
   const isSignIn = mode === "signin";
 
-  const API_BASE = "http://localhost:4000";
+  const backendBase = API_BASE || "";
 
   const resetErrors = () => {
     setUsernameError("");
@@ -25,7 +26,7 @@ const AuthPage = () => {
 
   const storeTokenAndGo = (token) => {
     if (token) {
-      window.localStorage.setItem("authToken", token);
+      window.localStorage.setItem(TOKEN_KEY, token);
       window.location.href = "/";
     }
   };
@@ -38,7 +39,7 @@ const AuthPage = () => {
     }
     setLoading(true);
     try {
-      const res = await fetch(`${API_BASE}/auth/login`, {
+      const res = await fetch(`${backendBase}/auth/login`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email, password })
@@ -78,7 +79,7 @@ const AuthPage = () => {
     const register = async () => {
       setLoading(true);
       try {
-        const res = await fetch(`${API_BASE}/auth/register`, {
+        const res = await fetch(`${backendBase}/auth/register`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ email, username, password })
