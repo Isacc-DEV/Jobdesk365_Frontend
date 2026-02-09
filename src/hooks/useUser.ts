@@ -2,13 +2,20 @@
 import { useState, useEffect } from "react";
 import { API_BASE, TOKEN_KEY } from "../config";
 
-export const useUser = () => {
+export const useUser = (options = {}) => {
+  const { enabled = true, redirectOnUnauthorized = true } = options;
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
+    if (!enabled) {
+      setLoading(false);
+      setError("");
+      return;
+    }
+
     const token = typeof window !== "undefined" ? window.localStorage.getItem(TOKEN_KEY) : null;
     if (!token) {
       setLoading(false);
@@ -16,11 +23,12 @@ export const useUser = () => {
       return;
     }
     const fetchUser = async () => {
+      setLoading(true);
       try {
         const res = await fetch(`${API_BASE}/auth/me`, {
           headers: { Authorization: `Bearer ${token}` }
         });
-        if (res.status === 401) {
+        if (res.status === 401 && redirectOnUnauthorized) {
           window.location.href = "/auth";
           return;
         }
@@ -37,7 +45,7 @@ export const useUser = () => {
       }
     };
     fetchUser();
-  }, []);
+  }, [enabled, redirectOnUnauthorized]);
 
   const updateUser = async (partial) => {
     const token = typeof window !== "undefined" ? window.localStorage.getItem(TOKEN_KEY) : null;
@@ -53,7 +61,11 @@ export const useUser = () => {
         body: JSON.stringify(partial || {})
       });
       if (res.status === 401) {
-        window.location.href = "/auth";
+        if (redirectOnUnauthorized) {
+          window.location.href = "/auth";
+          return null;
+        }
+        setError("Unauthorized");
         return null;
       }
       if (!res.ok) {

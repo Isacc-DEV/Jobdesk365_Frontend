@@ -1,8 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { API_BASE, TOKEN_KEY } from "../config";
 
-const ENDPOINT = API_BASE ? `${API_BASE}/profiles` : "/profiles";
-
 const formatNextInterview = (value) => {
   if (!value) return null;
   const date = new Date(value);
@@ -63,6 +61,7 @@ type LoadProfilesOptions = {
 
 type UseProfilesOptions = {
   scope?: string;
+  endpointPath?: string;
 };
 
 export const useProfiles = (options: UseProfilesOptions = {}) => {
@@ -70,7 +69,10 @@ export const useProfiles = (options: UseProfilesOptions = {}) => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const scope = options.scope;
-  const listEndpoint = scope ? `${ENDPOINT}?scope=${encodeURIComponent(scope)}` : ENDPOINT;
+  const endpointPath = options.endpointPath || "/profiles";
+  const normalizedEndpointPath = endpointPath.startsWith("/") ? endpointPath : `/${endpointPath}`;
+  const endpoint = API_BASE ? `${API_BASE}${normalizedEndpointPath}` : normalizedEndpointPath;
+  const listEndpoint = scope ? `${endpoint}?scope=${encodeURIComponent(scope)}` : endpoint;
 
   const loadProfiles = useCallback(
     async ({ signal, showLoading }: LoadProfilesOptions = {}) => {
@@ -130,7 +132,7 @@ export const useProfiles = (options: UseProfilesOptions = {}) => {
     if (!token) {
       throw new Error("Missing token");
     }
-    const res = await fetch(ENDPOINT, {
+    const res = await fetch(endpoint, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -157,7 +159,7 @@ export const useProfiles = (options: UseProfilesOptions = {}) => {
     if (!token) {
       throw new Error("Missing token");
     }
-    const res = await fetch(`${ENDPOINT}/${profileId}`, {
+    const res = await fetch(`${endpoint}/${profileId}`, {
       method: "PATCH",
       headers: {
         "Content-Type": "application/json",
@@ -184,7 +186,7 @@ export const useProfiles = (options: UseProfilesOptions = {}) => {
     if (!token) {
       throw new Error("Missing token");
     }
-    const res = await fetch(`${ENDPOINT}/${profileId}`, {
+    const res = await fetch(`${endpoint}/${profileId}`, {
       method: "DELETE",
       headers: {
         Authorization: `Bearer ${token}`
@@ -206,7 +208,7 @@ export const useProfiles = (options: UseProfilesOptions = {}) => {
     if (!token) {
       throw new Error("Missing token");
     }
-    const res = await fetch(`${ENDPOINT}/${profileId}`, {
+    const res = await fetch(`${endpoint}/${profileId}`, {
       headers: {
         Authorization: `Bearer ${token}`
       }
@@ -229,14 +231,14 @@ export const useProfiles = (options: UseProfilesOptions = {}) => {
       return next;
     });
     return normalized;
-  }, []);
+  }, [endpoint]);
 
   const startOutlookConnect = useCallback(async (profileId) => {
     const token = typeof window !== "undefined" ? window.localStorage.getItem(TOKEN_KEY) : null;
     if (!token) {
       throw new Error("Missing token");
     }
-    const res = await fetch(`${ENDPOINT}/${profileId}/email/outlook/authorize`, {
+    const res = await fetch(`${endpoint}/${profileId}/email/outlook/authorize`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -256,7 +258,7 @@ export const useProfiles = (options: UseProfilesOptions = {}) => {
       throw new Error("Missing authorization URL.");
     }
     return data.url;
-  }, []);
+  }, [endpoint]);
 
   const refreshProfiles = useCallback(async () => {
     await loadProfiles({ showLoading: false });
@@ -267,7 +269,7 @@ export const useProfiles = (options: UseProfilesOptions = {}) => {
     if (!token) {
       throw new Error("Missing token");
     }
-    const res = await fetch(`${ENDPOINT}/${profileId}/assign-bidder`, {
+    const res = await fetch(`${endpoint}/${profileId}/assign-bidder`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -294,7 +296,7 @@ export const useProfiles = (options: UseProfilesOptions = {}) => {
     if (!token) {
       throw new Error("Missing token");
     }
-    const res = await fetch(`${ENDPOINT}/${profileId}/unassign-bidder`, {
+    const res = await fetch(`${endpoint}/${profileId}/unassign-bidder`, {
       method: "POST",
       headers: {
         Authorization: `Bearer ${token}`

@@ -10,11 +10,20 @@ import { BACKEND_ORIGIN } from "../../config";
 import Modal from "../common/Modal";
 import { requestsService } from "../../services/requestsService";
 import HireRequestModal from "../hire/HireRequestModal";
+import { getInboxRouteByRoles } from "../../lib/profilesAccess";
 
-const MainPlaceholder = () => {
+const MainPlaceholder = ({ profileMode = "user" }) => {
   const { user } = useUser();
-  const roles = Array.isArray(user?.roles) ? user.roles : [];
+  const roleScope = Array.isArray(user?.roles) ? user.roles : undefined;
+  const roles = roleScope || [];
+  const inboxRoute = getInboxRouteByRoles(roles);
   const isAdmin = roles.includes("admin") || roles.includes("manager");
+  const endpointPath =
+    profileMode === "admin"
+      ? "/admin/profiles"
+      : profileMode === "manager"
+      ? "/manager/profiles"
+      : "/profiles";
   const {
     profiles,
     loading,
@@ -26,7 +35,7 @@ const MainPlaceholder = () => {
     startOutlookConnect,
     refreshProfiles,
     assignBidder
-  } = useProfiles({ scope: isAdmin ? "all" : undefined });
+  } = useProfiles({ endpointPath });
   const { templates, loading: templatesLoading, error: templatesError } = useTemplates();
   const [createOpen, setCreateOpen] = useState(false);
   const [templateOpen, setTemplateOpen] = useState(false);
@@ -99,7 +108,7 @@ const MainPlaceholder = () => {
       try {
         setAssignLoading(true);
         setAssignError("");
-        const items = await requestsService.listTalents("bidder");
+        const items = await requestsService.listTalents("bidder", { roles: roleScope });
         setAssignPeople(items);
       } catch (err) {
         setAssignError(err?.message || "Unable to load bidders.");
@@ -108,7 +117,7 @@ const MainPlaceholder = () => {
       }
     };
     loadBidders();
-  }, [assignModalOpen]);
+  }, [assignModalOpen, roleScope]);
 
   const closeBidderModal = () => {
     if (bidderSubmitting) return;
@@ -144,7 +153,7 @@ const MainPlaceholder = () => {
           action: bidderAction,
           note: bidderNote || ""
         }
-      });
+      }, { roles: roleScope });
       setMessageType("success");
       setMessage("Bidder request sent.");
       setBidderModalOpen(false);
@@ -244,7 +253,7 @@ const MainPlaceholder = () => {
       params.set("profile_id", profile.id);
     }
     const query = params.toString();
-    window.history.pushState({}, "", `/inbox${query ? `?${query}` : ""}`);
+    window.history.pushState({}, "", `${inboxRoute}${query ? `?${query}` : ""}`);
     window.dispatchEvent(new PopStateEvent("popstate"));
   };
 

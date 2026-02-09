@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   Briefcase,
   Calendar,
@@ -9,6 +9,7 @@ import {
 } from "lucide-react";
 import { useProfiles } from "../../hooks/useProfiles";
 import { useUser } from "../../hooks/useUser";
+import { getProfilesEndpointPathByRoles } from "../../lib/profilesAccess";
 
 const statusStyles = {
   Draft: "bg-gray-100 text-ink-muted",
@@ -68,11 +69,46 @@ const getNextInterviewDate = (profile) => {
   return date;
 };
 
+const useAnimatedNumber = (
+  target,
+  { duration = 900, enabled = true } = {}
+) => {
+  const [value, setValue] = useState(target);
+  const rafRef = useRef(0);
+  const valueRef = useRef(target);
+
+  useEffect(() => {
+    if (!enabled) {
+      valueRef.current = target;
+      setValue(target);
+      return;
+    }
+    const start = valueRef.current;
+    const diff = target - start;
+    if (diff === 0) return;
+    const startTime = performance.now();
+    const tick = (now) => {
+      const progress = Math.min((now - startTime) / duration, 1);
+      const eased = 1 - Math.pow(1 - progress, 3);
+      const next = start + diff * eased;
+      valueRef.current = next;
+      setValue(next);
+      if (progress < 1) {
+        rafRef.current = requestAnimationFrame(tick);
+      }
+    };
+    rafRef.current = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(rafRef.current);
+  }, [target, duration, enabled]);
+
+  return Math.round(value);
+};
+
 const DashboardPage = () => {
   const { user } = useUser();
   const roles = Array.isArray(user?.roles) ? user.roles : [];
-  const scope = roles.includes("admin") || roles.includes("manager") ? "all" : undefined;
-  const { profiles, loading, error, refreshProfiles } = useProfiles({ scope });
+  const endpointPath = getProfilesEndpointPathByRoles(roles);
+  const { profiles, loading, error, refreshProfiles } = useProfiles({ endpointPath });
 
   const metrics = useMemo(() => {
     const items = Array.isArray(profiles) ? profiles : [];
@@ -177,6 +213,16 @@ const DashboardPage = () => {
       ? `${attentionCount} project${attentionCount === 1 ? "" : "s"} need attention today.`
       : "Everything looks calm across projects.";
 
+  const animate = !loading;
+  const animatedTotal = useAnimatedNumber(loading ? 0 : metrics.total, { enabled: animate });
+  const animatedActive = useAnimatedNumber(loading ? 0 : metrics.activeCount, { enabled: animate });
+  const animatedUnread = useAnimatedNumber(loading ? 0 : metrics.unreadTotal, { enabled: animate });
+  const animatedInterviews = useAnimatedNumber(loading ? 0 : metrics.interviewCount, { enabled: animate });
+  const animatedUnassigned = useAnimatedNumber(loading ? 0 : metrics.unassignedCount, { enabled: animate });
+  const animatedAssigned = useAnimatedNumber(loading ? 0 : metrics.assignedCount, { enabled: animate });
+  const animatedConnected = useAnimatedNumber(loading ? 0 : metrics.connectedCount, { enabled: animate });
+  const animatedCoverage = useAnimatedNumber(loading ? 0 : metrics.coverage, { enabled: animate });
+
   return (
     <main className="relative min-h-[calc(100vh-64px)] overflow-hidden border-t border-border bg-page px-6 py-6">
       <style>{`
@@ -229,35 +275,35 @@ const DashboardPage = () => {
             <div className="mt-5 flex flex-wrap gap-2">
               <span className="inline-flex items-center gap-2 rounded-full border border-sky-100 bg-sky-50 px-3 py-1 text-xs font-semibold text-sky-700">
                 <span className="h-2 w-2 rounded-full bg-sky-500" />
-                Active {loading ? "-" : metrics.activeCount}
+                Active {loading ? "-" : animatedActive}
               </span>
               <span className="inline-flex items-center gap-2 rounded-full border border-amber-100 bg-amber-50 px-3 py-1 text-xs font-semibold text-amber-700">
                 <span className="h-2 w-2 rounded-full bg-amber-500" />
-                Unread {loading ? "-" : metrics.unreadTotal}
+                Unread {loading ? "-" : animatedUnread}
               </span>
               <span className="inline-flex items-center gap-2 rounded-full border border-emerald-100 bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-700">
                 <span className="h-2 w-2 rounded-full bg-emerald-500" />
-                Interviews {loading ? "-" : metrics.interviewCount}
+                Interviews {loading ? "-" : animatedInterviews}
               </span>
               <span className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-semibold text-slate-700">
                 <span className="h-2 w-2 rounded-full bg-slate-400" />
-                Unassigned {loading ? "-" : metrics.unassignedCount}
+                Unassigned {loading ? "-" : animatedUnassigned}
               </span>
             </div>
 
             <div className="mt-6 grid gap-3 sm:grid-cols-3">
               <div className="rounded-2xl border border-border bg-white/70 px-4 py-3">
                 <p className="text-xs text-ink-muted">Total projects</p>
-                <p className="text-lg font-semibold text-ink">{loading ? "-" : metrics.total}</p>
+                <p className="text-lg font-semibold text-ink">{loading ? "-" : animatedTotal}</p>
               </div>
               <div className="rounded-2xl border border-border bg-white/70 px-4 py-3">
                 <p className="text-xs text-ink-muted">Email connected</p>
-                <p className="text-lg font-semibold text-ink">{loading ? "-" : metrics.connectedCount}</p>
+                <p className="text-lg font-semibold text-ink">{loading ? "-" : animatedConnected}</p>
               </div>
               <div className="rounded-2xl border border-border bg-white/70 px-4 py-3">
                 <p className="text-xs text-ink-muted">Assignments</p>
                 <p className="text-lg font-semibold text-ink">
-                  {loading ? "-" : `${metrics.assignedCount}/${metrics.total}`}
+                  {loading ? "-" : `${animatedAssigned}/${animatedTotal}`}
                 </p>
               </div>
             </div>
@@ -267,36 +313,36 @@ const DashboardPage = () => {
             <div className="flex items-start justify-between gap-4">
               <div>
                 <p className="text-[11px] uppercase tracking-[0.25em] text-white/70">Assignment Coverage</p>
-                <p className="mt-2 text-4xl font-semibold">{loading ? "--" : `${metrics.coverage}%`}</p>
+                <p className="mt-2 text-4xl font-semibold">{loading ? "--" : `${animatedCoverage}%`}</p>
                 <p className="text-xs text-white/70">
-                  {loading ? "--" : `${metrics.assignedCount} assigned / ${metrics.unassignedCount} open`}
+                  {loading ? "--" : `${animatedAssigned} assigned / ${animatedUnassigned} open`}
                 </p>
               </div>
               <div className="relative flex h-20 w-20 items-center justify-center">
                 <div
                   className="absolute inset-0 rounded-full"
                   style={{
-                    background: `conic-gradient(#ffffff ${metrics.coverage}%, rgba(255,255,255,0.2) 0)`
+                    background: `conic-gradient(#ffffff ${animatedCoverage}%, rgba(255,255,255,0.2) 0)`
                   }}
                 />
                 <div className="absolute inset-2 rounded-full bg-sky-700/80 backdrop-blur" />
                 <span className="relative text-sm font-semibold">
-                  {loading ? "--" : `${metrics.coverage}%`}
+                  {loading ? "--" : `${animatedCoverage}%`}
                 </span>
               </div>
             </div>
             <div className="mt-6 grid grid-cols-3 gap-3 text-xs">
               <div className="rounded-xl bg-white/20 px-3 py-2">
                 <p className="text-white/70">Unread</p>
-                <p className="text-lg font-semibold">{loading ? "-" : metrics.unreadTotal}</p>
+                <p className="text-lg font-semibold">{loading ? "-" : animatedUnread}</p>
               </div>
               <div className="rounded-xl bg-white/20 px-3 py-2">
                 <p className="text-white/70">Interviews</p>
-                <p className="text-lg font-semibold">{loading ? "-" : metrics.interviewCount}</p>
+                <p className="text-lg font-semibold">{loading ? "-" : animatedInterviews}</p>
               </div>
               <div className="rounded-xl bg-white/20 px-3 py-2">
                 <p className="text-white/70">Active</p>
-                <p className="text-lg font-semibold">{loading ? "-" : metrics.activeCount}</p>
+                <p className="text-lg font-semibold">{loading ? "-" : animatedActive}</p>
               </div>
             </div>
           </div>
@@ -313,8 +359,8 @@ const DashboardPage = () => {
             <div className="flex items-start justify-between gap-4">
               <div>
                 <p className="text-xs uppercase tracking-wide text-ink-muted">Total projects</p>
-                <p className="text-2xl font-semibold text-ink">{loading ? "-" : metrics.total}</p>
-                <p className="text-xs text-ink-muted">{loading ? "-" : `${metrics.activeCount} active`}</p>
+                <p className="text-2xl font-semibold text-ink">{loading ? "-" : animatedTotal}</p>
+                <p className="text-xs text-ink-muted">{loading ? "-" : `${animatedActive} active`}</p>
               </div>
               <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-accent-primary/10 text-accent-primary">
                 <Briefcase size={18} />
@@ -325,7 +371,7 @@ const DashboardPage = () => {
             <div className="flex items-start justify-between gap-4">
               <div>
                 <p className="text-xs uppercase tracking-wide text-ink-muted">Interviews in 7 days</p>
-                <p className="text-2xl font-semibold text-ink">{loading ? "-" : metrics.interviewCount}</p>
+                <p className="text-2xl font-semibold text-ink">{loading ? "-" : animatedInterviews}</p>
                 <p className="text-xs text-ink-muted">Upcoming schedule</p>
               </div>
               <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-green-50 text-green-600">
@@ -337,7 +383,7 @@ const DashboardPage = () => {
             <div className="flex items-start justify-between gap-4">
               <div>
                 <p className="text-xs uppercase tracking-wide text-ink-muted">Unread inbox</p>
-                <p className="text-2xl font-semibold text-ink">{loading ? "-" : metrics.unreadTotal}</p>
+                <p className="text-2xl font-semibold text-ink">{loading ? "-" : animatedUnread}</p>
                 <p className="text-xs text-ink-muted">Across all projects</p>
               </div>
               <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-amber-50 text-amber-600">
@@ -349,7 +395,7 @@ const DashboardPage = () => {
             <div className="flex items-start justify-between gap-4">
               <div>
                 <p className="text-xs uppercase tracking-wide text-ink-muted">Unassigned projects</p>
-                <p className="text-2xl font-semibold text-ink">{loading ? "-" : metrics.unassignedCount}</p>
+                <p className="text-2xl font-semibold text-ink">{loading ? "-" : animatedUnassigned}</p>
                 <p className="text-xs text-ink-muted">Needs coverage</p>
               </div>
               <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-slate-100 text-slate-500">
@@ -382,7 +428,7 @@ const DashboardPage = () => {
                     </div>
                     <div className="h-2 w-full rounded-full bg-gray-100">
                       <div
-                        className={`h-2 rounded-full ${statusBarStyles[item.status] || "bg-gray-300"}`}
+                        className={`h-2 rounded-full transition-[width] duration-700 ${statusBarStyles[item.status] || "bg-gray-300"}`}
                         style={{ width: `${item.percent}%` }}
                       />
                     </div>
@@ -433,23 +479,23 @@ const DashboardPage = () => {
               <div>
                 <div className="flex items-center justify-between text-xs text-ink-muted">
                   <span>Assigned</span>
-                  <span>{loading ? "-" : `${metrics.assignedCount} / ${metrics.total}`}</span>
+                  <span>{loading ? "-" : `${animatedAssigned} / ${animatedTotal}`}</span>
                 </div>
                 <div className="mt-2 h-2 rounded-full bg-gray-100">
                   <div
-                    className="h-2 rounded-full bg-accent-primary"
-                    style={{ width: `${metrics.coverage}%` }}
+                    className="h-2 rounded-full bg-accent-primary transition-[width] duration-700"
+                    style={{ width: `${animatedCoverage}%` }}
                   />
                 </div>
               </div>
               <div className="grid gap-3 text-sm text-ink">
                 <div className="flex items-center justify-between">
                   <span className="text-ink-muted">Unassigned projects</span>
-                  <span className="font-semibold">{loading ? "-" : metrics.unassignedCount}</span>
+                  <span className="font-semibold">{loading ? "-" : animatedUnassigned}</span>
                 </div>
                 <div className="flex items-center justify-between">
                   <span className="text-ink-muted">Email connected</span>
-                  <span className="font-semibold">{loading ? "-" : metrics.connectedCount}</span>
+                  <span className="font-semibold">{loading ? "-" : animatedConnected}</span>
                 </div>
               </div>
             </div>

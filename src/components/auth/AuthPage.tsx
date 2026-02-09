@@ -27,7 +27,7 @@ const AuthPage = () => {
   const storeTokenAndGo = (token) => {
     if (token) {
       window.localStorage.setItem(TOKEN_KEY, token);
-      window.location.href = "/";
+      window.location.href = "/dashboard";
     }
   };
 

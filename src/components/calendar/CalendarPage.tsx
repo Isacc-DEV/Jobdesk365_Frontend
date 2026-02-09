@@ -4,6 +4,10 @@ import { API_BASE, TOKEN_KEY } from "../../config";
 import HireRequestModal from "../hire/HireRequestModal";
 import { requestsService } from "../../services/requestsService";
 import { useUser } from "../../hooks/useUser";
+import {
+  getCalendarEndpointPathByRoles,
+  getProfilesRouteByRoles
+} from "../../lib/profilesAccess";
 
 const weekDays = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 const monthLabels = [
@@ -142,8 +146,12 @@ const normalizeEvent = (event) => ({
 
 const CalendarPage = () => {
   const { user } = useUser();
-  const roles = Array.isArray(user?.roles) ? user.roles : [];
+  const roleScope = Array.isArray(user?.roles) ? user.roles : undefined;
+  const roles = roleScope || [];
   const isAdmin = roles.includes("admin") || roles.includes("manager");
+  const profilesRoute = getProfilesRouteByRoles(roles);
+  const calendarEndpointPath = getCalendarEndpointPathByRoles(roles);
+  const calendarEndpoint = API_BASE ? `${API_BASE}${calendarEndpointPath}` : calendarEndpointPath;
   const monthPickerRef = useRef(null);
   const monthButtonRef = useRef(null);
   const [accounts, setAccounts] = useState([]);
@@ -200,7 +208,7 @@ const CalendarPage = () => {
     try {
       setAccountsLoading(true);
       setAccountsError(null);
-      const res = await fetch(`${API_BASE}/calendar/accounts`, {
+      const res = await fetch(`${calendarEndpoint}/accounts`, {
         signal,
         headers: {
           Authorization: `Bearer ${token}`
@@ -224,7 +232,7 @@ const CalendarPage = () => {
     } finally {
       setAccountsLoading(false);
     }
-  }, []);
+  }, [calendarEndpoint]);
 
   const loadEvents = useCallback(async (accountId, signal) => {
     if (!accountId) {
@@ -245,7 +253,7 @@ const CalendarPage = () => {
       setEventsLoading(true);
       setEventsError(null);
       const res = await fetch(
-        `${API_BASE}/calendar/events?account_id=${encodeURIComponent(accountId)}&start=${encodeURIComponent(viewStart.toISOString())}&end=${encodeURIComponent(viewEnd.toISOString())}`,
+        `${calendarEndpoint}/events?account_id=${encodeURIComponent(accountId)}&start=${encodeURIComponent(viewStart.toISOString())}&end=${encodeURIComponent(viewEnd.toISOString())}`,
         {
           signal,
           headers: {
@@ -271,20 +279,20 @@ const CalendarPage = () => {
     } finally {
       setEventsLoading(false);
     }
-  }, [viewEnd, viewStart]);
+  }, [calendarEndpoint, viewEnd, viewStart]);
 
   const loadCallers = useCallback(async () => {
     try {
       setCallerLoading(true);
       setCallerError("");
-      const items = await requestsService.listTalents("caller");
+      const items = await requestsService.listTalents("caller", { roles: roleScope });
       setCallerList(items);
     } catch (err) {
       setCallerError(err?.message || "Unable to load callers.");
     } finally {
       setCallerLoading(false);
     }
-  }, []);
+  }, [roleScope]);
 
   const syncEvents = useCallback(async (accountId) => {
     if (!accountId) return null;
@@ -297,7 +305,7 @@ const CalendarPage = () => {
     }
 
     const res = await fetch(
-      `${API_BASE}/calendar/sync?account_id=${encodeURIComponent(accountId)}&start=${encodeURIComponent(viewStart.toISOString())}&end=${encodeURIComponent(viewEnd.toISOString())}`,
+      `${calendarEndpoint}/sync?account_id=${encodeURIComponent(accountId)}&start=${encodeURIComponent(viewStart.toISOString())}&end=${encodeURIComponent(viewEnd.toISOString())}`,
       {
         method: "POST",
         headers: {
@@ -313,7 +321,7 @@ const CalendarPage = () => {
       throw new Error(`Failed to sync calendar (${res.status})`);
     }
     return res.json();
-  }, [viewEnd, viewStart]);
+  }, [calendarEndpoint, viewEnd, viewStart]);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -455,7 +463,7 @@ const CalendarPage = () => {
 
   const handleConnectCalendar = () => {
     if (typeof window !== "undefined") {
-      window.history.pushState({}, "", "/profiles");
+      window.history.pushState({}, "", profilesRoute);
       window.dispatchEvent(new PopStateEvent("popstate"));
     }
   };
@@ -504,7 +512,7 @@ const CalendarPage = () => {
           ? window.localStorage.getItem(TOKEN_KEY)
           : null;
         if (!token) throw new Error("Missing token");
-        const res = await fetch(`${API_BASE}/calendar/events/${selectedEvent.id}/assign`, {
+        const res = await fetch(`${calendarEndpoint}/events/${selectedEvent.id}/assign`, {
           method: "POST",
           headers: {
             Authorization: `Bearer ${token}`,
@@ -523,7 +531,7 @@ const CalendarPage = () => {
         setCallerModalOpen(false);
         setSelectedEvent(null);
       } else {
-        const existingRequests = (await requestsService.listRequests()) || [];
+        const existingRequests = (await requestsService.listRequests({ roles: roleScope })) || [];
         const conflict = hasCallerConflict(
           existingRequests,
           assigneeId,
@@ -543,7 +551,7 @@ const CalendarPage = () => {
           },
           assignee_user_id: assigneeId,
           when_at: whenAt
-        });
+        }, { roles: roleScope });
         setCallerModalOpen(false);
         setSelectedEvent(null);
       }
@@ -920,3 +928,4 @@ const CalendarPage = () => {
 };
 
 export default CalendarPage;
+

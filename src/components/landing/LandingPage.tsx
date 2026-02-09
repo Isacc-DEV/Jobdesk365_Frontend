@@ -1,23 +1,79 @@
+import { useEffect, useRef, useState } from "react";
 import {
   ArrowRight,
   BarChart3,
   CalendarCheck,
   Check,
-  FileText,
+  ChevronDown,
   Globe2,
   Layers,
+  LogOut,
   Mail,
+  Settings,
   ShieldCheck,
   Sparkles,
+  User,
   Users,
   Wand2
 } from "lucide-react";
+import { BACKEND_ORIGIN, TOKEN_KEY } from "../../config";
+import { isJwtValid } from "../../lib/auth";
+import { useUser } from "../../hooks/useUser";
+import { JobLifecycle } from "./JobLifecycle";
 
 type LandingPageProps = {
   onNavigate?: (path: string) => void;
 };
 
 const LandingPage = ({ onNavigate }: LandingPageProps) => {
+  const token = typeof window !== "undefined" ? window.localStorage.getItem(TOKEN_KEY) : null;
+  const isAuthed = isJwtValid(token);
+  const ctaPath = isAuthed ? "/dashboard" : "/auth";
+  const primaryCtaLabel = isAuthed ? "Open dashboard" : "Get started";
+  const secondaryCtaLabel = isAuthed ? "Dashboard" : "Sign in";
+  const { user } = useUser({ enabled: isAuthed, redirectOnUnauthorized: false });
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [avatarFailed, setAvatarFailed] = useState(false);
+  const menuRef = useRef<HTMLDivElement | null>(null);
+
+  const resolveAvatarUrl = (value: unknown) => {
+    if (!value) return "";
+    const trimmed = String(value).trim();
+    if (!trimmed) return "";
+    if (/^https?:\/\//i.test(trimmed)) return trimmed;
+    const base = BACKEND_ORIGIN || (typeof window !== "undefined" ? window.location.origin : "");
+    if (!base) return trimmed.startsWith("/") ? trimmed : `/${trimmed}`;
+    return trimmed.startsWith("/") ? `${base}${trimmed}` : `${base}/${trimmed}`;
+  };
+
+  const displayName =
+    user?.display_name ||
+    user?.name ||
+    user?.username ||
+    (user?.email ? String(user.email).split("@")[0] : "User");
+  const avatarUrl = resolveAvatarUrl(user?.photo_link || "");
+
+  useEffect(() => {
+    setAvatarFailed(false);
+  }, [avatarUrl]);
+
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (menuRef.current && !menuRef.current.contains(event.target as Node)) {
+        setMenuOpen(false);
+      }
+    };
+    const handleEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setMenuOpen(false);
+    };
+    document.addEventListener("mousedown", handleClickOutside);
+    document.addEventListener("keydown", handleEscape);
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside);
+      document.removeEventListener("keydown", handleEscape);
+    };
+  }, []);
+
   const features = [
     {
       title: "Unified candidate hub",
@@ -133,47 +189,115 @@ const LandingPage = ({ onNavigate }: LandingPageProps) => {
     }
   };
 
+  const handleLogout = () => {
+    if (typeof window !== "undefined") {
+      window.localStorage.removeItem(TOKEN_KEY);
+      window.location.href = "/auth";
+    }
+  };
+
   return (
     <div className="min-h-screen bg-page text-ink">
       <header className="sticky top-0 z-30 border-b border-border/70 bg-page/80 backdrop-blur">
         <nav className="mx-auto flex w-full max-w-[1200px] items-center justify-between px-6 py-4">
-          <div className="flex items-center gap-3">
-            <div className="grid h-9 w-9 place-items-center rounded-xl bg-accent-primary/10 text-xs font-bold text-accent-primary">
-              JD
-            </div>
-            <span className="text-sm font-semibold tracking-wide">JobDesk365</span>
+          <div className="flex items-center">
+            <img src="/images/logo.png" alt="JobDesk365" className="h-9 w-auto object-contain" />
           </div>
           <div className="hidden items-center gap-6 text-sm text-ink-muted md:flex">
-            <button type="button" className="hover:text-ink">
+            <button type="button" onClick={() => handleNavigate("/dashboard")} className="hover:text-ink">
               Product
-            </button>
-            <button type="button" className="hover:text-ink">
-              Solutions
             </button>
             <button type="button" className="hover:text-ink">
               Pricing
             </button>
             <button type="button" className="hover:text-ink">
-              Resources
+              About Us
             </button>
           </div>
-          <div className="flex items-center gap-3">
-            <button
-              type="button"
-              onClick={() => handleNavigate("/auth")}
-              className="text-sm font-semibold text-ink-muted transition hover:text-ink"
-            >
-              Sign in
-            </button>
-            <button
-              type="button"
-              onClick={() => handleNavigate("/auth")}
-              className="inline-flex items-center gap-2 rounded-full bg-accent-primary px-4 py-2 text-sm font-semibold text-white shadow-soft transition hover:opacity-90"
-            >
-              Get started
-              <ArrowRight size={16} />
-            </button>
-          </div>
+          {isAuthed ? (
+            <div className="relative" ref={menuRef}>
+              <button
+                type="button"
+                onClick={() => setMenuOpen((prev) => !prev)}
+                aria-haspopup="menu"
+                aria-expanded={menuOpen}
+                className="flex items-center gap-1.5 rounded-full border border-border-soft bg-white/90 px-2 py-1 text-ink transition duration-150 ease-out hover:border-ink-muted hover:-translate-y-[1px] hover:shadow-soft focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent-primary"
+              >
+                <div className="h-8 w-8 rounded-full border border-border bg-accent-primary/10 text-accent-primary grid place-items-center overflow-hidden">
+                  {avatarUrl && !avatarFailed ? (
+                    <img
+                      src={avatarUrl}
+                      alt={displayName}
+                      className="h-full w-full object-cover"
+                      onError={() => setAvatarFailed(true)}
+                    />
+                  ) : (
+                    <span className="text-[11px] font-bold uppercase">{displayName?.[0] ?? "U"}</span>
+                  )}
+                </div>
+                <ChevronDown size={14} className="text-ink-muted" />
+              </button>
+              {menuOpen ? (
+                <div
+                  role="menu"
+                  className="absolute right-0 mt-2 w-44 rounded-xl border border-border bg-white shadow-lg p-1 z-50"
+                >
+                  <button
+                    type="button"
+                    role="menuitem"
+                    onClick={() => {
+                      setMenuOpen(false);
+                      handleNavigate("/user");
+                    }}
+                    className="w-full flex items-center gap-2 rounded-lg px-3 py-2 text-sm text-ink hover:bg-gray-100"
+                  >
+                    <User size={16} />
+                    Profile
+                  </button>
+                  <button
+                    type="button"
+                    role="menuitem"
+                    onClick={() => {
+                      setMenuOpen(false);
+                      handleNavigate("/settings");
+                    }}
+                    className="w-full flex items-center gap-2 rounded-lg px-3 py-2 text-sm text-ink hover:bg-gray-100"
+                  >
+                    <Settings size={16} />
+                    Settings
+                  </button>
+                  <div className="my-1 h-px bg-border" />
+                  <button
+                    type="button"
+                    role="menuitem"
+                    onClick={handleLogout}
+                    className="w-full flex items-center gap-2 rounded-lg px-3 py-2 text-sm text-red-600 hover:bg-red-50"
+                  >
+                    <LogOut size={16} />
+                    Logout
+                  </button>
+                </div>
+              ) : null}
+            </div>
+          ) : (
+            <div className="flex items-center gap-3">
+              <button
+                type="button"
+                onClick={() => handleNavigate(ctaPath)}
+                className="text-sm font-semibold text-ink-muted transition hover:text-ink"
+              >
+                {secondaryCtaLabel}
+              </button>
+              <button
+                type="button"
+                onClick={() => handleNavigate(ctaPath)}
+                className="inline-flex items-center gap-2 rounded-full bg-accent-primary px-4 py-2 text-sm font-semibold text-white shadow-soft transition hover:opacity-90"
+              >
+                {primaryCtaLabel}
+                <ArrowRight size={16} />
+              </button>
+            </div>
+          )}
         </nav>
       </header>
 
@@ -203,39 +327,10 @@ const LandingPage = ({ onNavigate }: LandingPageProps) => {
                 <img src="/images/0001.png" className="mt-2 w-full" />
               </div>
 
-              <div className="rounded-3xl border border-border bg-white/80 p-6 shadow-soft backdrop-blur lg:mt-10">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-xs uppercase tracking-wide text-ink-muted">
-                      Workspace snapshot
-                    </p>
-                    <h2 className="mt-2 text-xl font-semibold text-ink">
-                      What's the benefit?
-                    </h2>
+              <div className="mt-12">
+                  <div className="mt-3">
+                    <JobLifecycle />
                   </div>
-
-                  <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-accent-primary/10 text-accent-primary">
-                    <BarChart3 size={18} />
-                  </div>
-                </div>
-
-                <div className="mt-5 grid gap-4">
-                  {stats.map((stat) => (
-                    <div
-                      key={stat.label}
-                      className="flex items-center justify-between rounded-2xl border border-border/70 bg-white px-4 py-3"
-                    >
-                      <p className="text-sm text-ink-muted">{stat.label}</p>
-                      <p className="text-lg font-semibold text-ink">{stat.value}</p>
-                    </div>
-                  ))}
-                </div>
-
-                <div className="mt-6 rounded-2xl bg-slate-900 px-4 py-4 text-white">
-                  <p className="text-sm font-semibold">
-                    JobDesk365 works even better as your profiles grow
-                  </p>
-                </div>
               </div>
             </div>
           </div>
@@ -273,10 +368,10 @@ const LandingPage = ({ onNavigate }: LandingPageProps) => {
               </p>
               <div className="mt-6 space-y-3">
                 {[
-                  "Auto tag candidate status",
-                  "Share interview packets",
-                  "Track approvals by role",
-                  "Alert on stalled requests"
+                  "Unified Hiring Timeline",
+                  "End-to-End Hiring Visibility",
+                  "Single Source of Truth",
+                  "Context-Aware Hiring Flow"
                 ].map((item) => (
                   <div key={item} className="flex items-center gap-2 text-sm">
                     <Check size={16} className="text-emerald-300" />
@@ -286,83 +381,38 @@ const LandingPage = ({ onNavigate }: LandingPageProps) => {
               </div>
               <button
                 type="button"
+                onClick={() => handleNavigate("/dashboard")}
                 className="mt-6 inline-flex items-center gap-2 rounded-full bg-white px-4 py-2 text-sm font-semibold text-slate-900"
               >
-                See sample workspace
+                See Your Dashboard
                 <ArrowRight size={16} />
               </button>
             </div>
 
-            <div className="grid gap-4">
-              <div className="rounded-3xl border border-border bg-white p-6 shadow-soft">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-xs uppercase tracking-wide text-ink-muted">Live activity</p>
-                    <p className="mt-1 text-lg font-semibold text-ink">Recruiter queue</p>
-                  </div>
-                  <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-amber-100 text-amber-700">
-                    <FileText size={18} />
-                  </div>
+            <div className="rounded-3xl border border-border bg-white p-6 shadow-soft">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-xs uppercase tracking-wide text-ink-muted">Workspace snapshot</p>
+                  <h2 className="mt-2 text-xl font-semibold text-ink">What's the benefit?</h2>
                 </div>
-                <div className="mt-4 space-y-3 text-sm text-ink-muted">
-                  <div className="flex items-center justify-between rounded-xl border border-border bg-white px-4 py-3">
-                    <span>Review 12 new profiles</span>
-                    <span className="text-xs font-semibold text-ink">Today</span>
-                  </div>
-                  <div className="flex items-center justify-between rounded-xl border border-border bg-white px-4 py-3">
-                    <span>Send 5 resume drafts</span>
-                    <span className="text-xs font-semibold text-ink">Tomorrow</span>
-                  </div>
-                  <div className="flex items-center justify-between rounded-xl border border-border bg-white px-4 py-3">
-                    <span>Confirm 3 interview slots</span>
-                    <span className="text-xs font-semibold text-ink">Wed</span>
-                  </div>
+                <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-accent-primary/10 text-accent-primary">
+                  <BarChart3 size={18} />
                 </div>
               </div>
-              <div className="rounded-3xl border border-border bg-white p-6 shadow-soft">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-xs uppercase tracking-wide text-ink-muted">Pipeline health</p>
-                    <p className="mt-1 text-lg font-semibold text-ink">Coverage score</p>
+              <div className="mt-5 grid gap-4">
+                {stats.map((stat) => (
+                  <div
+                    key={stat.label}
+                    className="flex items-center justify-between rounded-2xl border border-border/70 bg-white px-4 py-3"
+                  >
+                    <p className="text-sm text-ink-muted">{stat.label}</p>
+                    <p className="text-lg font-semibold text-ink">{stat.value}</p>
                   </div>
-                  <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-emerald-100 text-emerald-700">
-                    <BarChart3 size={18} />
-                  </div>
-                </div>
-                <div className="mt-4 grid gap-3">
-                  <div className="rounded-2xl border border-border bg-white px-4 py-3">
-                    <p className="text-xs text-ink-muted">Assigned recruiters</p>
-                    <p className="text-lg font-semibold text-ink">84%</p>
-                  </div>
-                  <div className="rounded-2xl border border-border bg-white px-4 py-3">
-                    <p className="text-xs text-ink-muted">Interview readiness</p>
-                    <p className="text-lg font-semibold text-ink">92%</p>
-                  </div>
-                </div>
+                ))}
               </div>
-            </div>
-          </div>
-        </section>
-
-        <section className="mx-auto w-full max-w-[1200px] px-6 py-16">
-          <div className="grid gap-8 lg:grid-cols-[1fr_1.1fr]">
-            <div>
-              <p className="text-xs uppercase tracking-wide text-ink-muted">How it works</p>
-              <h2 className="mt-2 text-3xl font-semibold text-ink">Move from intake to hire faster.</h2>
-              <p className="mt-4 text-sm text-ink-muted">
-                Replace scattered spreadsheets with a unified flow that your team can follow from day one.
-              </p>
-            </div>
-            <div className="grid gap-4 sm:grid-cols-3">
-              {steps.map((step, index) => (
-                <div key={step.title} className="rounded-3xl border border-border bg-white p-5 shadow-soft">
-                  <div className="flex h-9 w-9 items-center justify-center rounded-full bg-accent-primary/10 text-sm font-semibold text-accent-primary">
-                    {index + 1}
-                  </div>
-                  <h3 className="mt-4 text-base font-semibold text-ink">{step.title}</h3>
-                  <p className="mt-2 text-xs text-ink-muted">{step.description}</p>
-                </div>
-              ))}
+              <div className="mt-6 rounded-2xl bg-slate-900 px-4 py-4 text-white">
+                <p className="text-sm font-semibold">JobDesk365 works even better as your profiles grow</p>
+              </div>
             </div>
           </div>
         </section>
@@ -381,95 +431,13 @@ const LandingPage = ({ onNavigate }: LandingPageProps) => {
           </div>
         </section>
 
-        <section className="mx-auto w-full max-w-[1200px] px-6 py-16">
-          <div className="flex flex-col gap-6 rounded-3xl border border-border bg-white p-8 shadow-soft">
-            <div className="flex flex-wrap items-center justify-between gap-4">
-              <div>
-                <p className="text-xs uppercase tracking-wide text-ink-muted">Pricing</p>
-                <h2 className="mt-2 text-2xl font-semibold text-ink">Plans that scale with your team.</h2>
-              </div>
-              <div className="inline-flex items-center gap-2 rounded-full border border-border bg-page px-3 py-1 text-xs text-ink-muted">
-                Annual billing saves 18%
-              </div>
-            </div>
-            <div className="grid gap-4 lg:grid-cols-3">
-              {pricing.map((tier) => (
-                <div
-                  key={tier.name}
-                  className={`rounded-3xl border p-6 shadow-soft ${
-                    tier.featured
-                      ? "border-accent-primary bg-accent-primary/5"
-                      : "border-border bg-white"
-                  }`}
-                >
-                  <p className="text-sm font-semibold text-ink">{tier.name}</p>
-                  <p className="mt-3 text-3xl font-semibold text-ink">{tier.price}</p>
-                  <p className="mt-2 text-xs text-ink-muted">{tier.description}</p>
-                  <div className="mt-4 space-y-2 text-sm text-ink-muted">
-                    {tier.highlights.map((item) => (
-                      <div key={item} className="flex items-center gap-2">
-                        <Check size={14} className="text-accent-primary" />
-                        {item}
-                      </div>
-                    ))}
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => handleNavigate("/auth")}
-                    className={`mt-5 w-full rounded-full px-4 py-2 text-sm font-semibold transition ${
-                      tier.featured
-                        ? "bg-accent-primary text-white hover:opacity-90"
-                        : "border border-border bg-white text-ink hover:-translate-y-[1px] hover:shadow-soft"
-                    }`}
-                  >
-                    Choose plan
-                  </button>
-                </div>
-              ))}
-            </div>
-          </div>
-        </section>
-
-        <section className="mx-auto w-full max-w-[1200px] px-6 pb-20">
-          <div className="rounded-3xl bg-slate-900 px-8 py-10 text-white shadow-soft">
-            <div className="grid gap-6 lg:grid-cols-[1.2fr_0.8fr] lg:items-center">
-              <div>
-                <h2 className="text-3xl font-semibold">Ready to streamline your hiring flow?</h2>
-                <p className="mt-3 text-sm text-white/70">
-                  Start with mock data, invite your team, and swap in real content whenever you are ready.
-                </p>
-              </div>
-              <div className="flex flex-wrap items-center gap-3 lg:justify-end">
-                <button
-                  type="button"
-                  onClick={() => handleNavigate("/auth")}
-                  className="inline-flex items-center gap-2 rounded-full bg-white px-5 py-2.5 text-sm font-semibold text-slate-900"
-                >
-                  Start trial
-                  <ArrowRight size={16} />
-                </button>
-                <button
-                  type="button"
-                  className="inline-flex items-center gap-2 rounded-full border border-white/30 px-5 py-2.5 text-sm font-semibold text-white"
-                >
-                  Talk to sales
-                </button>
-              </div>
-            </div>
-          </div>
-        </section>
       </main>
 
       <footer className="border-t border-border bg-white">
         <div className="mx-auto flex w-full max-w-[1200px] flex-col gap-6 px-6 py-10 md:flex-row md:items-center md:justify-between">
-          <div className="flex items-center gap-3">
-            <div className="grid h-9 w-9 place-items-center rounded-xl bg-accent-primary/10 text-xs font-bold text-accent-primary">
-              JD
-            </div>
-            <div>
-              <p className="text-sm font-semibold text-ink">JobDesk365</p>
-              <p className="text-xs text-ink-muted">Hiring teams, calmer days.</p>
-            </div>
+          <div className="flex flex-col gap-2">
+            <img src="/images/logo.png" alt="JobDesk365" className="h-9 w-fit object-contain" />
+            <p className="text-xs text-ink-muted">Hiring teams, calmer days.</p>
           </div>
           <div className="flex flex-wrap items-center gap-4 text-xs text-ink-muted">
             <span>Privacy</span>

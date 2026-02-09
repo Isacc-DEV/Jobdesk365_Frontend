@@ -47,7 +47,8 @@ const TalentCard = ({ talent }) => {
 
 const TalentsPage = () => {
   const { user } = useUser();
-  const roles = Array.isArray(user?.roles) ? user.roles : [];
+  const roleScope = Array.isArray(user?.roles) ? user.roles : undefined;
+  const roles = roleScope || [];
   const isAdmin = roles.includes("admin") || roles.includes("manager");
   const [talents, setTalents] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -66,8 +67,8 @@ const TalentsPage = () => {
       setLoading(true);
       setError("");
       const [callerItems, bidderItems] = await Promise.all([
-        requestsService.listTalents("caller"),
-        requestsService.listTalents("bidder")
+        requestsService.listTalents("caller", { roles: roleScope }),
+        requestsService.listTalents("bidder", { roles: roleScope })
       ]);
       const withRoles = [
         ...callerItems.map((item) => ({ ...item, role: item.role || "caller" })),
@@ -84,7 +85,7 @@ const TalentsPage = () => {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [roleScope]);
 
   useEffect(() => {
     loadTalents();
@@ -103,7 +104,7 @@ const TalentsPage = () => {
       try {
         setSuggestLoading(true);
         setSuggestError("");
-        const items = await requestsService.searchUsers(value);
+        const items = await requestsService.searchUsers(value, { roles: roleScope });
         setSuggestions(items);
       } catch (err) {
         setSuggestError(err?.message || "Unable to load suggestions.");
@@ -113,7 +114,7 @@ const TalentsPage = () => {
       }
     }, 250);
     return () => window.clearTimeout(handle);
-  }, [identity, isAdmin]);
+  }, [identity, isAdmin, roleScope]);
 
   const handleAddTalent = async () => {
     if (!identity.trim()) {
@@ -129,7 +130,7 @@ const TalentsPage = () => {
         : value.includes("@")
         ? { role: formRole, email: value }
         : { role: formRole, username: value };
-      await requestsService.createTalent(payload);
+      await requestsService.createTalent(payload, { roles: roleScope });
       setIdentity("");
       setSelectedUserId("");
       setSuggestions([]);

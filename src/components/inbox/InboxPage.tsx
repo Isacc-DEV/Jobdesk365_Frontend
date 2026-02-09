@@ -10,6 +10,8 @@ import {
   X
 } from "lucide-react";
 import { API_BASE, TOKEN_KEY } from "../../config";
+import { useUser } from "../../hooks/useUser";
+import { getEmailEndpointPathByRoles, getProfilesRouteByRoles } from "../../lib/profilesAccess";
 
 const formatTimestamp = (value) => {
   if (!value) return "";
@@ -60,6 +62,11 @@ const normalizeEmail = (email) => ({
 });
 
 const InboxPage = () => {
+  const { user } = useUser();
+  const roles = Array.isArray(user?.roles) ? user.roles : [];
+  const profilesRoute = getProfilesRouteByRoles(roles);
+  const emailEndpointPath = getEmailEndpointPathByRoles(roles);
+  const emailEndpoint = API_BASE ? `${API_BASE}${emailEndpointPath}` : emailEndpointPath;
   const [accounts, setAccounts] = useState([]);
   const [accountsLoading, setAccountsLoading] = useState(true);
   const [accountsError, setAccountsError] = useState(null);
@@ -99,7 +106,7 @@ const InboxPage = () => {
     try {
       setAccountsLoading(true);
       setAccountsError(null);
-      const res = await fetch(`${API_BASE}/email/accounts`, {
+      const res = await fetch(`${emailEndpoint}/accounts`, {
         signal,
         headers: {
           Authorization: `Bearer ${token}`
@@ -123,7 +130,7 @@ const InboxPage = () => {
     } finally {
       setAccountsLoading(false);
     }
-  }, []);
+  }, [emailEndpoint]);
 
   const loadEmails = useCallback(async (accountId, signal) => {
     if (!accountId) {
@@ -144,7 +151,7 @@ const InboxPage = () => {
       setEmailsLoading(true);
       setEmailsError(null);
       const res = await fetch(
-        `${API_BASE}/email/messages?account_id=${encodeURIComponent(accountId)}`,
+        `${emailEndpoint}/messages?account_id=${encodeURIComponent(accountId)}`,
         {
           signal,
           headers: {
@@ -170,7 +177,7 @@ const InboxPage = () => {
     } finally {
       setEmailsLoading(false);
     }
-  }, []);
+  }, [emailEndpoint]);
 
   const syncEmails = useCallback(async (accountId) => {
     if (!accountId) return null;
@@ -183,7 +190,7 @@ const InboxPage = () => {
     }
 
     const res = await fetch(
-      `${API_BASE}/email/sync?account_id=${encodeURIComponent(accountId)}`,
+      `${emailEndpoint}/sync?account_id=${encodeURIComponent(accountId)}`,
       {
         method: "POST",
         headers: {
@@ -199,7 +206,7 @@ const InboxPage = () => {
       throw new Error(`Failed to sync emails (${res.status})`);
     }
     return res.json();
-  }, []);
+  }, [emailEndpoint]);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -276,7 +283,7 @@ const InboxPage = () => {
 
   const handleConnectEmail = () => {
     if (typeof window !== "undefined") {
-      window.history.pushState({}, "", "/profiles");
+      window.history.pushState({}, "", profilesRoute);
       window.dispatchEvent(new PopStateEvent("popstate"));
     }
   };
@@ -302,7 +309,7 @@ const InboxPage = () => {
       : null;
     if (!token || !emailId) return;
     try {
-      const res = await fetch(`${API_BASE}/email/messages/${emailId}/read`, {
+      const res = await fetch(`${emailEndpoint}/messages/${emailId}/read`, {
         method: "PATCH",
         headers: {
           Authorization: `Bearer ${token}`
@@ -359,7 +366,7 @@ const InboxPage = () => {
       try {
         setDetailLoading(true);
         setDetailError(null);
-        const res = await fetch(`${API_BASE}/email/messages/${selectedEmail.id}`, {
+        const res = await fetch(`${emailEndpoint}/messages/${selectedEmail.id}`, {
           signal: controller.signal,
           headers: {
             Authorization: `Bearer ${token}`

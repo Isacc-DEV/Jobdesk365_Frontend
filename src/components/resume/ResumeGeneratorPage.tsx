@@ -12,6 +12,11 @@ import {
 } from "lucide-react";
 import { useProfiles } from "../../hooks/useProfiles";
 import { API_BASE, AI_SERVICE_URL, TOKEN_KEY } from "../../config";
+import { useUser } from "../../hooks/useUser";
+import {
+  getProfilesEndpointPathByRoles,
+  getProfilesRouteByRoles
+} from "../../lib/profilesAccess";
 
 const shuffleArray = <T,>(items: T[]) => {
   if (!Array.isArray(items) || items.length < 2) return items;
@@ -382,7 +387,11 @@ const normalizeAiResponse = (payload: any) => {
 };
 
 const ResumeGeneratorPage = () => {
-  const { profiles, loading, error } = useProfiles();
+  const { user } = useUser();
+  const roles = Array.isArray(user?.roles) ? user.roles : [];
+  const endpointPath = getProfilesEndpointPathByRoles(roles);
+  const profilesRoute = getProfilesRouteByRoles(roles);
+  const { profiles, loading, error } = useProfiles({ endpointPath });
   const [query, setQuery] = useState("");
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [jobSource, setJobSource] = useState("manual");
@@ -446,7 +455,7 @@ const ResumeGeneratorPage = () => {
     setGenerationError("");
   };
 
-  const handleGenerate = async () => {
+  const handleGenerate = async ({ regenerate = false } = {}) => {
     if (!selectedProfile || !selectedHasTemplate || !jobDescription.trim() || isGenerating) return;
     setIsGenerating(true);
     setGenerationError("");
@@ -460,13 +469,24 @@ const ResumeGeneratorPage = () => {
         },
         body: JSON.stringify({
           job_description: jobDescription.trim(),
-          profile_id: selectedProfile?.id
+          profile_id: selectedProfile?.id,
+          regenerate
         })
       });
 
       if (!res.ok) {
+        const contentType = res.headers.get("content-type") || "";
         const text = await res.text();
-        throw new Error(text || `Failed to generate resume (${res.status})`);
+        let message = text;
+        if (contentType.includes("application/json")) {
+          try {
+            const parsed = JSON.parse(text || "{}");
+            message = parsed?.message || parsed?.error || text;
+          } catch {
+            message = text;
+          }
+        }
+        throw new Error(message || `Failed to generate resume (${res.status})`);
       }
 
       const contentType = res.headers.get("content-type") || "";
@@ -563,7 +583,7 @@ const ResumeGeneratorPage = () => {
 
   const navigateToProfiles = () => {
     if (typeof window === "undefined") return;
-    window.history.pushState({}, "", "/profiles");
+    window.history.pushState({}, "", profilesRoute);
     window.dispatchEvent(new PopStateEvent("popstate"));
   };
 
@@ -841,7 +861,7 @@ const ResumeGeneratorPage = () => {
 
                 <button
                   type="button"
-                  onClick={handleGenerate}
+                  onClick={() => handleGenerate({ regenerate: true })}
                   disabled={!selectedProfile || !selectedHasTemplate || !jobDescription.trim() || isGenerating}
                   className={`mt-5 w-full flex items-center justify-center gap-2 rounded-lg py-3 text-sm font-semibold transition ${
                     !selectedProfile || !selectedHasTemplate || !jobDescription.trim() || isGenerating
@@ -877,7 +897,7 @@ const ResumeGeneratorPage = () => {
                 <div className="flex gap-2">
                   <button
                     type="button"
-                  onClick={handleGenerate}
+                  onClick={() => handleGenerate({ regenerate: false })}
                     disabled={!selectedProfile || !selectedHasTemplate || !jobDescription.trim() || isGenerating}
                     className="px-3 py-2 rounded-lg bg-border text-xs font-semibold text-ink hover:bg-[#DDE3EA] disabled:opacity-50 disabled:cursor-not-allowed"
                   >

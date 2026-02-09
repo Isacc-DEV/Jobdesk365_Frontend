@@ -28,6 +28,12 @@ const Header = ({ searchPlaceholder, onNavigate }) => {
     user?.username ||
     (user?.email ? String(user.email).split("@")[0] : "User");
   const avatarUrl = resolveAvatarUrl(user?.photo_link || "");
+  const rawBalance = user?.balance ?? null;
+  const balanceValue =
+    rawBalance === null || rawBalance === undefined || Number.isNaN(Number(rawBalance))
+      ? null
+      : Number(rawBalance);
+  const balanceLabel = balanceValue === null ? "" : `$${balanceValue.toFixed(2)}`;
 
   useEffect(() => {
     setAvatarFailed(false);
@@ -71,12 +77,18 @@ const Header = ({ searchPlaceholder, onNavigate }) => {
   return (
     <header className="h-16 grid grid-cols-[auto_1fr_auto] items-center gap-6 px-7 bg-main border-b border-border">
       <div className="flex items-center">
-        <Logo />
+        <Logo onNavigate={handleNavigate} />
       </div>
       <div className="justify-self-center">
         <SearchBar placeholder={searchPlaceholder} />
       </div>
       <div className="flex items-center gap-2.5">
+        {balanceValue !== null ? (
+          <div className="hidden sm:flex items-center gap-2 rounded-full border border-border bg-white px-3 py-1 text-xs font-semibold text-ink">
+            <span className="text-ink-muted">Balance</span>
+            <span>{balanceLabel}</span>
+          </div>
+        ) : null}
         <IconButton icon={Bell} ariaLabel="Notifications" />
         <div className="relative" ref={menuRef}>
           <button

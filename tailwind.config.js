@@ -33,7 +33,8 @@ export default {
         soft: "0 10px 40px rgba(15, 23, 42, 0.07)"
       },
       fontFamily: {
-        sans: ["Inter", "Segoe UI", "system-ui", "sans-serif"]
+        sans: ["Inter", "Segoe UI", "system-ui", "sans-serif"],
+        chat: ["IBM Plex Sans", "Inter", "Segoe UI", "sans-serif"]
       }
     }
   },

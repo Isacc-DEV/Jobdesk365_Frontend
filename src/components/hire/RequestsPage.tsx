@@ -4,6 +4,7 @@ import { API_BASE, TOKEN_KEY } from "../../config";
 import { requestsService } from "../../services/requestsService";
 import { useUser } from "../../hooks/useUser";
 import HireRequestModal from "./HireRequestModal";
+import { getProfilesEndpointPathByRoles } from "../../lib/profilesAccess";
 
 const formatMoney = (value) => {
   if (value === null || value === undefined || value === "") return "-";
@@ -217,8 +218,10 @@ const RequestTable = ({
 
 const RequestsPage = () => {
   const { user } = useUser();
-  const roles = Array.isArray(user?.roles) ? user.roles : [];
+  const roleScope = Array.isArray(user?.roles) ? user.roles : undefined;
+  const roles = roleScope || [];
   const isAdmin = roles.includes("admin") || roles.includes("manager");
+  const profilesEndpointPath = getProfilesEndpointPathByRoles(roles);
   const [requests, setRequests] = useState([]);
   const [requestsLoading, setRequestsLoading] = useState(true);
   const [requestsError, setRequestsError] = useState("");
@@ -239,14 +242,14 @@ const RequestsPage = () => {
     try {
       setRequestsLoading(true);
       setRequestsError("");
-      const items = await requestsService.listRequests({ scope: isAdmin ? "all" : undefined });
+      const items = await requestsService.listRequests({ roles: roleScope });
       setRequests(items);
     } catch (err) {
       setRequestsError(err?.message || "Unable to load requests.");
     } finally {
       setRequestsLoading(false);
     }
-  }, [isAdmin]);
+  }, [roleScope]);
 
   useEffect(() => {
     loadRequests();
@@ -265,14 +268,14 @@ const RequestsPage = () => {
     try {
       setAssignLoading(true);
       setAssignError("");
-      const items = await requestsService.listTalents("bidder");
+      const items = await requestsService.listTalents("bidder", { roles: roleScope });
       setAssignPeople(items);
     } catch (err) {
       setAssignError(err?.message || "Unable to load bidders.");
     } finally {
       setAssignLoading(false);
     }
-  }, []);
+  }, [roleScope]);
 
   useEffect(() => {
     if (!assignOpen) return;
@@ -282,7 +285,9 @@ const RequestsPage = () => {
   const assignBidderToProfile = async (profileId, bidderUserId) => {
     const token = typeof window !== "undefined" ? window.localStorage.getItem(TOKEN_KEY) : null;
     if (!token) throw new Error("Missing token");
-    const endpoint = API_BASE ? `${API_BASE}/profiles/${profileId}/assign-bidder` : `/profiles/${profileId}/assign-bidder`;
+    const endpoint = API_BASE
+      ? `${API_BASE}${profilesEndpointPath}/${profileId}/assign-bidder`
+      : `${profilesEndpointPath}/${profileId}/assign-bidder`;
     const res = await fetch(endpoint, {
       method: "POST",
       headers: {
@@ -305,7 +310,9 @@ const RequestsPage = () => {
   const unassignBidderFromProfile = async (profileId) => {
     const token = typeof window !== "undefined" ? window.localStorage.getItem(TOKEN_KEY) : null;
     if (!token) throw new Error("Missing token");
-    const endpoint = API_BASE ? `${API_BASE}/profiles/${profileId}/unassign-bidder` : `/profiles/${profileId}/unassign-bidder`;
+    const endpoint = API_BASE
+      ? `${API_BASE}${profilesEndpointPath}/${profileId}/unassign-bidder`
+      : `${profilesEndpointPath}/${profileId}/unassign-bidder`;
     const res = await fetch(endpoint, {
       method: "POST",
       headers: {
@@ -361,7 +368,7 @@ const RequestsPage = () => {
       const updated = await requestsService.updateRequest(assignRequest.id, {
         status: "working",
         assignee_user_id: assigneeId
-      });
+      }, { roles: roleScope });
       setRequests((prev) => {
         if (updated?.archived) {
           return prev.filter((item) => item.id !== assignRequest.id);
@@ -404,7 +411,7 @@ const RequestsPage = () => {
             const updated = await requestsService.updateRequest(request.id, {
               status: "working",
               assignee_user_id: null
-            });
+            }, { roles: roleScope });
             setRequests((prev) =>
               updated?.archived
                 ? prev.filter((item) => item.id !== request.id)
@@ -423,7 +430,7 @@ const RequestsPage = () => {
       try {
         setUpdatingId(request.id);
         setRequestsError("");
-        const updated = await requestsService.updateRequest(request.id, { status });
+        const updated = await requestsService.updateRequest(request.id, { status }, { roles: roleScope });
         setRequests((prev) =>
           updated?.archived
             ? prev.filter((item) => item.id !== request.id)
@@ -435,7 +442,7 @@ const RequestsPage = () => {
         setUpdatingId("");
       }
     },
-    [isAdmin]
+    [isAdmin, roleScope]
   );
 
   const orderedRequests = useMemo(() => {
@@ -498,7 +505,7 @@ const RequestsPage = () => {
       setEditError("");
       const updated = await requestsService.updateRequest(editRequest.id, {
         detail: payloadDetail || null
-      });
+      }, { roles: roleScope });
       setRequests((prev) =>
         prev.map((item) => (item.id === editRequest.id ? { ...item, ...updated } : item))
       );
@@ -516,7 +523,7 @@ const RequestsPage = () => {
     if (!confirmed) return;
     try {
       setRequestsError("");
-      await requestsService.deleteRequest(request.id);
+      await requestsService.deleteRequest(request.id, { roles: roleScope });
       setRequests((prev) => prev.filter((item) => item.id !== request.id));
     } catch (err) {
       setRequestsError(err?.message || "Unable to delete request.");

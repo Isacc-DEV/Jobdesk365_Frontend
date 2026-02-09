@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Download, Search, ExternalLink, Flag } from "lucide-react";
 import { API_BASE, TOKEN_KEY } from "../../config";
 import { useUser } from "../../hooks/useUser";
+import { getApplicationsEndpointPathByRoles } from "../../lib/profilesAccess";
 
 type BidEntry = {
   profile_id: string;
@@ -26,8 +27,6 @@ type Application = {
   user_email?: string | null;
   user_display_name?: string | null;
 };
-
-const APPLICATIONS_ENDPOINT = API_BASE ? `${API_BASE}/applications` : "/applications";
 
 const formatDateTime = (value: string) => {
   if (!value) return "";
@@ -117,6 +116,9 @@ const downloadCsv = (filename: string, csv: string) => {
 
 const ApplicationsPage = () => {
   const { user } = useUser();
+  const roles = Array.isArray(user?.roles) ? user.roles : [];
+  const applicationsEndpointPath = getApplicationsEndpointPathByRoles(roles);
+  const applicationsEndpoint = API_BASE ? `${API_BASE}${applicationsEndpointPath}` : applicationsEndpointPath;
   const defaultRangeMethod = "Weekly";
   const initialRange = getRangeForMethod(new Date(), defaultRangeMethod);
   const [applications, setApplications] = useState<Application[]>([]);
@@ -148,8 +150,8 @@ const ApplicationsPage = () => {
       if (toDate) params.set("to", toDate);
 
       const url = params.toString()
-        ? `${APPLICATIONS_ENDPOINT}?${params.toString()}`
-        : APPLICATIONS_ENDPOINT;
+        ? `${applicationsEndpoint}?${params.toString()}`
+        : applicationsEndpoint;
 
       const res = await fetch(url, {
         headers: {
@@ -184,7 +186,7 @@ const ApplicationsPage = () => {
       fetchApplications();
     }, 300);
     return () => window.clearTimeout(handle);
-  }, [query, fromDate, toDate]);
+  }, [applicationsEndpoint, query, fromDate, toDate]);
 
   const handleClearFilters = () => {
     setQuery("");
@@ -243,7 +245,7 @@ const ApplicationsPage = () => {
     let url = app.url;
     if (token) {
       try {
-        const res = await fetch(`${APPLICATIONS_ENDPOINT}/${app.id}/open`, {
+        const res = await fetch(`${applicationsEndpoint}/${app.id}/open`, {
           headers: {
             Authorization: `Bearer ${token}`
           }
