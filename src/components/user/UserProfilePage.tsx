@@ -463,11 +463,10 @@ const UserProfilePage = () => {
       const uploadedLink = data?.photo_link || data?.url || "";
       if (!uploadedLink) throw new Error("Upload failed.");
       const updated = await updateUser({ photo_link: uploadedLink });
-      if (updated) {
-        setAvatarSrc(resolveAvatarUrl(uploadedLink));
-        closeCropper();
-      } else {
-        setAvatarError("Unable to save avatar. Please check the API connection.");
+      setAvatarSrc(resolveAvatarUrl(uploadedLink));
+      closeCropper();
+      if (!updated) {
+        setAvatarError("Avatar uploaded, but profile sync is delayed. Refresh the page if needed.");
       }
     } catch (err) {
       setAvatarError(err.message || "Unable to upload avatar.");
