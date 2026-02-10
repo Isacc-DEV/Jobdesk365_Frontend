@@ -1,8 +1,8 @@
 import { useEffect, useRef, useState } from "react";
-import { Bell, ChevronDown, LogOut, Settings, User } from "lucide-react";
-import IconButton from "../common/IconButton";
+import { ChevronDown, LogOut, Settings, User } from "lucide-react";
 import SearchBar from "../common/SearchBar";
 import Logo from "./Logo";
+import NotificationBell from "./NotificationBell";
 import { BACKEND_ORIGIN, TOKEN_KEY } from "../../config";
 import { useUser } from "../../hooks/useUser";
 
@@ -89,7 +89,7 @@ const Header = ({ searchPlaceholder, onNavigate }) => {
             <span>{balanceLabel}</span>
           </div>
         ) : null}
-        <IconButton icon={Bell} ariaLabel="Notifications" />
+        <NotificationBell onNavigate={handleNavigate} />
         <div className="relative" ref={menuRef}>
           <button
             type="button"

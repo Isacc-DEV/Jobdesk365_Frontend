@@ -566,11 +566,13 @@ const UserProfilePage = () => {
                 {avatarError ? <p className="text-xs text-red-500 mt-1">{avatarError}</p> : null}
               </div>
             </div>
-            <div className="rounded-2xl border border-border bg-white px-4 py-3">
-              <p className="text-xs uppercase tracking-wide text-ink-muted">Balance</p>
-              <p className="mt-1 text-lg font-semibold text-ink">{balanceLabel}</p>
-              <p className="text-xs text-ink-muted">Available credits</p>
-            </div>
+            {activeTab === "billing" ? null : (
+              <div className="rounded-2xl border border-border bg-white px-4 py-3">
+                <p className="text-xs uppercase tracking-wide text-ink-muted">Balance</p>
+                <p className="mt-1 text-lg font-semibold text-ink">{balanceLabel}</p>
+                <p className="text-xs text-ink-muted">Available credits</p>
+              </div>
+            )}
           </header>
 
           {activeTab === "profile" ? (
@@ -678,205 +680,9 @@ const UserProfilePage = () => {
               </div>
             </div>
           ) : activeTab === "billing" ? (
-            <div className="grid gap-6">
-              <div className="rounded-2xl border border-border bg-white p-6">
-                <div className="flex flex-wrap items-center justify-between gap-4">
-                  <div>
-                    <p className="text-xs uppercase tracking-wide text-ink-muted">Billing summary</p>
-                    <h2 className="mt-2 text-lg font-semibold text-ink">Your subscription</h2>
-                    <p className="text-sm text-ink-muted">
-                      Manage payment methods and billing details in one place.
-                    </p>
-                  </div>
-                  <button
-                    type="button"
-                    className="px-4 h-10 rounded-xl border border-border text-sm font-semibold text-ink hover:-translate-y-[1px] hover:shadow-soft transition"
-                  >
-                    Manage plan
-                  </button>
-                </div>
-                <div className="mt-5 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-                  {billingSummary.map((item) => (
-                    <div
-                      key={item.label}
-                      className="rounded-xl border border-border bg-main p-4"
-                    >
-                      <p className="text-xs uppercase tracking-wide text-ink-muted">{item.label}</p>
-                      <p className="mt-2 text-lg font-semibold text-ink">{item.value}</p>
-                      <p className="mt-1 text-xs text-ink-muted">{item.meta}</p>
-                    </div>
-                  ))}
-                </div>
-              </div>
-
-              <div className="rounded-2xl border border-border bg-white p-6">
-                <div className="flex flex-wrap items-center justify-between gap-4">
-                  <div>
-                    <p className="text-xs uppercase tracking-wide text-ink-muted">Payment methods</p>
-                    <h2 className="mt-2 text-lg font-semibold text-ink">
-                      Card, PayPal, Payoneer, and Crypto
-                    </h2>
-                    <p className="text-sm text-ink-muted">
-                      Choose your preferred payment method for subscription charges.
-                    </p>
-                  </div>
-                  <button
-                    type="button"
-                    className="px-4 h-10 rounded-xl bg-accent-primary text-white text-sm font-semibold hover:opacity-90 transition"
-                  >
-                    Add method
-                  </button>
-                </div>
-                <div className="mt-5 grid gap-4 md:grid-cols-2">
-                  {paymentMethods.map((method) => (
-                    <div
-                      key={method.id}
-                      className="rounded-2xl border border-border bg-main p-5"
-                    >
-                      <div className="flex items-start justify-between gap-3">
-                        <div className="flex items-center gap-3">
-                          <div className="h-11 w-11 rounded-xl bg-accent-primary/10 text-accent-primary grid place-items-center text-xs font-bold">
-                            {method.badge}
-                          </div>
-                          <div>
-                            <p className="text-sm font-semibold text-ink">{method.label}</p>
-                            <p className="text-xs text-ink-muted">{method.description}</p>
-                          </div>
-                        </div>
-                        <span
-                          className={`px-2.5 py-1 rounded-full border text-xs font-semibold ${method.statusClass}`}
-                        >
-                          {method.status}
-                        </span>
-                      </div>
-                      <p className="mt-4 text-sm text-ink">{method.detail}</p>
-                      <div className="mt-5 flex items-center gap-2">
-                        <button
-                          type="button"
-                          className="px-3 h-9 rounded-lg bg-accent-primary text-white text-sm font-semibold hover:opacity-90 transition"
-                        >
-                          {method.actionLabel}
-                        </button>
-                        {method.secondaryLabel ? (
-                          <button
-                            type="button"
-                            className="px-3 h-9 rounded-lg border border-border text-sm font-semibold text-ink hover:-translate-y-[1px] hover:shadow-soft transition"
-                          >
-                            {method.secondaryLabel}
-                          </button>
-                        ) : null}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-
-              <div className="grid gap-6 lg:grid-cols-[1.15fr_0.85fr]">
-                <div className="rounded-2xl border border-border bg-white p-6">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <p className="text-xs uppercase tracking-wide text-ink-muted">Billing details</p>
-                      <h2 className="mt-2 text-lg font-semibold text-ink">Invoice information</h2>
-                    </div>
-                  </div>
-                  <div className="mt-5 grid gap-4 sm:grid-cols-2">
-                    <div className="space-y-2">
-                      <label className={labelClass}>Billing name</label>
-                      <input
-                        className={inputClass}
-                        defaultValue={user.name || displayName}
-                        placeholder="Company or individual"
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <label className={labelClass}>Billing email</label>
-                      <input
-                        className={inputClass}
-                        defaultValue={user.email || ""}
-                        placeholder="billing@company.com"
-                      />
-                    </div>
-                    <div className="space-y-2 sm:col-span-2">
-                      <label className={labelClass}>Address</label>
-                      <input className={inputClass} placeholder="Street address" />
-                    </div>
-                    <div className="space-y-2">
-                      <label className={labelClass}>City</label>
-                      <input className={inputClass} placeholder="City" />
-                    </div>
-                    <div className="space-y-2">
-                      <label className={labelClass}>Country/Region</label>
-                      <select className={inputClass} defaultValue="US">
-                        <option value="US">United States</option>
-                        <option value="CA">Canada</option>
-                        <option value="GB">United Kingdom</option>
-                        <option value="AU">Australia</option>
-                      </select>
-                    </div>
-                    <div className="space-y-2">
-                      <label className={labelClass}>Postal code</label>
-                      <input className={inputClass} placeholder="ZIP / Postal code" />
-                    </div>
-                    <div className="space-y-2">
-                      <label className={labelClass}>Tax ID (optional)</label>
-                      <input className={inputClass} placeholder="VAT / EIN" />
-                    </div>
-                  </div>
-                  <div className="mt-5 flex items-center gap-3">
-                    <button
-                      type="button"
-                      className="px-5 h-11 rounded-xl bg-accent-primary text-white font-semibold hover:opacity-90 transition"
-                    >
-                      Save billing info
-                    </button>
-                    <span className="text-xs text-ink-muted">
-                      Your billing data is stored securely.
-                    </span>
-                  </div>
-                </div>
-
-                <div className="rounded-2xl border border-border bg-white p-6">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <p className="text-xs uppercase tracking-wide text-ink-muted">Invoices</p>
-                      <h2 className="mt-2 text-lg font-semibold text-ink">Recent activity</h2>
-                    </div>
-                    <button
-                      type="button"
-                      className="text-sm font-semibold text-accent-primary hover:opacity-90"
-                    >
-                      View all
-                    </button>
-                  </div>
-                  <div className="mt-5 space-y-3">
-                    {invoices.map((invoice) => (
-                      <div
-                        key={invoice.id}
-                        className="flex items-center justify-between rounded-xl border border-border bg-main px-4 py-3"
-                      >
-                        <div>
-                          <p className="text-sm font-semibold text-ink">{invoice.id}</p>
-                          <p className="text-xs text-ink-muted">{invoice.date}</p>
-                        </div>
-                        <div className="flex items-center gap-3">
-                          <span className="text-sm font-semibold text-ink">{invoice.amount}</span>
-                          <span
-                            className={`px-2.5 py-1 rounded-full text-xs font-semibold ${invoice.statusClass}`}
-                          >
-                            {invoice.status}
-                          </span>
-                          <button
-                            type="button"
-                            className="text-xs font-semibold text-accent-primary hover:opacity-90"
-                          >
-                            Download
-                          </button>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              </div>
+            <div className="rounded-2xl border border-border bg-white p-8">
+              <h2 className="text-2xl font-bold text-ink">Coming Soon.</h2>
+              <p className="mt-3 text-base text-ink-muted">currently plz contact us directly.</p>
             </div>
           ) : (
             <div className="rounded-2xl border border-border bg-white p-6 text-sm text-ink-muted">
@@ -977,3 +783,4 @@ const UserProfilePage = () => {
 };
 
 export default UserProfilePage;
+

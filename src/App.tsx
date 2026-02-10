@@ -77,7 +77,7 @@ const App = () => {
   const isSettingsRoute = route.startsWith("/settings");
   const isResumeGeneratorRoute = route.startsWith("/resume-generator");
   const isResumeTemplatesRoute = route.startsWith("/resume-templates");
-  const isTalentsRoute = route.startsWith("/hire-talents");
+  const isTalentsRoute = route.startsWith("/hire-talents") || route.startsWith("/hire-talent");
 
   const isAdminRequestsRoute = route.startsWith("/admin/requests");
   const isManagerRequestsRoute = route.startsWith("/manager/requests");
