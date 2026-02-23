@@ -60,26 +60,52 @@ const MainPlaceholder = ({ profileMode = "user" }) => {
   const [assignError, setAssignError] = useState("");
 
   useEffect(() => {
+    const formatTraceSuffix = (traceId) =>
+      traceId && String(traceId).trim() ? ` (trace: ${String(traceId).trim()})` : "";
+
     const handleMessage = async (event) => {
       if (event.origin !== BACKEND_ORIGIN) return;
       const payload = event.data || {};
       if (payload.type === "email_connected" && payload.profileId) {
+        const traceSuffix = formatTraceSuffix(payload.traceId);
         try {
           const updated = await fetchProfile(payload.profileId);
+          const updatedEmailAccountId = updated?.raw?.email_account_id || null;
           if (detailProfile?.id === payload.profileId && updated) {
             setDetailProfile(updated);
           }
           await refreshProfiles();
+
+          if (!updatedEmailAccountId) {
+            setMessageType("error");
+            setMessage(
+              `Email callback succeeded, but profile email account is still empty. Check backend logs with trace id${traceSuffix}.`
+            );
+            return;
+          }
+
+          if (payload.emailAccountId && payload.emailAccountId !== updatedEmailAccountId) {
+            setMessageType("error");
+            setMessage(
+              `Email callback returned account ${payload.emailAccountId}, but profile has ${updatedEmailAccountId}.${traceSuffix}`
+            );
+            return;
+          }
+
           setMessageType("success");
-          setMessage("Email connected successfully.");
+          setMessage(`Email connected successfully${traceSuffix}.`);
         } catch (err) {
           setMessageType("error");
-          setMessage(err?.message || "Email connected, but failed to refresh profile.");
+          setMessage(
+            err?.message ||
+              `Email callback succeeded, but failed to refresh profile${traceSuffix}.`
+          );
         }
       }
       if (payload.type === "email_connect_error") {
+        const traceSuffix = formatTraceSuffix(payload.traceId);
         setMessageType("error");
-        setMessage(payload.message || "Email connection failed.");
+        setMessage(payload.message || `Email connection failed${traceSuffix}.`);
       }
     };
 
