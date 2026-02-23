@@ -236,6 +236,24 @@ const MainPlaceholder = ({ profileMode = "user" }) => {
       if (!popup) {
         throw new Error("Popup blocked. Please allow popups and try again.");
       }
+
+      const startedAt = Date.now();
+      const pollWindow = window.setInterval(async () => {
+        const elapsed = Date.now() - startedAt;
+        if (!popup.closed && elapsed < 5 * 60 * 1000) {
+          return;
+        }
+        window.clearInterval(pollWindow);
+        try {
+          const updated = await fetchProfile(profileId);
+          if (updated) {
+            setDetailProfile((prev) => (prev?.id === profileId ? updated : prev));
+          }
+          await refreshProfiles();
+        } catch {
+          // noop: message listener still handles successful callback in normal flow.
+        }
+      }, 1000);
     } catch (err) {
       setMessageType("error");
       setMessage(err?.message || "Unable to start email connection.");
