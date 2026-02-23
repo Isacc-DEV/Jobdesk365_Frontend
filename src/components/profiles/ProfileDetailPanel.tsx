@@ -57,7 +57,7 @@ const buildBaseInfoForm = (profile) => {
     currentSalary: baseInfo.current_salary || baseInfo.currentSalary || "",
     noticePeriod: baseInfo.notice_period || baseInfo.noticePeriod || "",
     currency: baseInfo.currency || "USD",
-    email: baseInfo.email || profile?.email || "",
+    email: baseInfo.email || "",
     password: baseInfo.password || baseInfo.profile_password || "",
     phoneCountryCode: baseInfo.phone_country_code || baseInfo.phoneCountryCode || "",
     phoneNumber: baseInfo.phone_number || baseInfo.phoneNumber || "",

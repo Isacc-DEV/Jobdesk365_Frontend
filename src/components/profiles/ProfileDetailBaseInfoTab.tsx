@@ -131,9 +131,10 @@ const ProfileDetailBaseInfoTab = ({
       <div className="grid grid-cols-1 gap-4">
         <input
           type="email"
-          readOnly
-          className="w-full rounded-lg border border-border px-3 py-2 text-sm bg-gray-50 text-ink-muted"
+          placeholder="Email"
+          className="w-full rounded-lg border border-border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent-primary/40"
           value={baseInfoForm.email}
+          onChange={(event) => updateBaseInfoForm("email", event.target.value)}
         />
         <input
           type="text"
