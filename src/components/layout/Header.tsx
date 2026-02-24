@@ -6,7 +6,13 @@ import NotificationBell from "./NotificationBell";
 import { BACKEND_ORIGIN, TOKEN_KEY } from "../../config";
 import { useUser } from "../../hooks/useUser";
 
-const Header = ({ searchPlaceholder, onNavigate }) => {
+const Header = ({
+  searchPlaceholder,
+  onNavigate,
+  showChatAlertControl = false,
+  chatAlertPermission = "default",
+  onEnableChatAlerts
+}) => {
   const { user } = useUser();
   const [menuOpen, setMenuOpen] = useState(false);
   const [avatarFailed, setAvatarFailed] = useState(false);
@@ -74,6 +80,11 @@ const Header = ({ searchPlaceholder, onNavigate }) => {
     }
   };
 
+  const showEnableAlerts =
+    showChatAlertControl &&
+    chatAlertPermission !== "granted" &&
+    chatAlertPermission !== "unsupported";
+
   return (
     <header className="h-16 grid grid-cols-[auto_1fr_auto] items-center gap-6 px-7 bg-main border-b border-border">
       <div className="flex items-center">
@@ -83,6 +94,19 @@ const Header = ({ searchPlaceholder, onNavigate }) => {
         <SearchBar placeholder={searchPlaceholder} />
       </div>
       <div className="flex items-center gap-2.5">
+        {showEnableAlerts ? (
+          <button
+            type="button"
+            onClick={() => {
+              if (onEnableChatAlerts) {
+                void onEnableChatAlerts();
+              }
+            }}
+            className="hidden md:inline-flex items-center rounded-full border border-border bg-white px-3 py-1 text-xs font-semibold text-ink hover:border-ink-muted"
+          >
+            {chatAlertPermission === "denied" ? "Enable alerts (blocked)" : "Enable alerts"}
+          </button>
+        ) : null}
         {balanceValue !== null ? (
           <div className="hidden sm:flex items-center gap-2 rounded-full border border-border bg-white px-3 py-1 text-xs font-semibold text-ink">
             <span className="text-ink-muted">Balance</span>

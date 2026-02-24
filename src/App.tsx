@@ -26,6 +26,8 @@ import {
   getProfilesRouteByRoles,
   getRequestsRouteByRoles
 } from "./lib/profilesAccess";
+import { TOKEN_KEY } from "./config";
+import { useChatAlerts } from "./hooks/useChatAlerts";
 
 const App = () => {
   const [sidebarExpanded, setSidebarExpanded] = useState(false);
@@ -109,6 +111,38 @@ const App = () => {
   const requestsRoute = getRequestsRouteByRoles(roles);
   const isEmployee = roles.some((role) => role === "admin" || role === "manager" || role === "worker");
   const showLiveChat = !isAuthed || (!userLoading && !isEmployee);
+  const token = typeof window !== "undefined" ? window.localStorage.getItem(TOKEN_KEY) : null;
+
+  const {
+    permission: chatAlertPermission,
+    requestPermission: requestChatAlertPermission,
+    clearUnseen: clearChatAlerts
+  } = useChatAlerts({
+    enabled: Boolean(isAuthed && !userLoading && isEmployee && token),
+    token,
+    userId: user?.id,
+    route,
+    onNavigate: navigate
+  });
+
+  useEffect(() => {
+    if (typeof window === "undefined" || typeof document === "undefined") return;
+
+    const maybeClear = () => {
+      const onChatRoute = route.startsWith("/chat");
+      if (!onChatRoute) return;
+      if (document.visibilityState !== "visible" || !document.hasFocus()) return;
+      clearChatAlerts();
+    };
+
+    maybeClear();
+    window.addEventListener("focus", maybeClear);
+    document.addEventListener("visibilitychange", maybeClear);
+    return () => {
+      window.removeEventListener("focus", maybeClear);
+      document.removeEventListener("visibilitychange", maybeClear);
+    };
+  }, [clearChatAlerts, route]);
 
   useEffect(() => {
     if (!isAuthed || userLoading) return;
@@ -218,7 +252,15 @@ const App = () => {
         onNavigate={navigate}
       />
       <div className="grid grid-rows-[64px_1fr] min-h-screen bg-page">
-        <Header searchPlaceholder={searchPlaceholder} onNavigate={navigate} />
+        <Header
+          searchPlaceholder={searchPlaceholder}
+          onNavigate={navigate}
+          showChatAlertControl={isEmployee}
+          chatAlertPermission={chatAlertPermission}
+          onEnableChatAlerts={() => {
+            void requestChatAlertPermission();
+          }}
+        />
         {content}
       </div>
       {showLiveChat ? <LiveChatCard /> : null}

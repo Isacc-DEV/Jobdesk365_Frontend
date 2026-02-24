@@ -1,4 +1,4 @@
-﻿import { useEffect, useMemo, useRef, useState } from "react";
+﻿import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   AtSign,
   Bold,
@@ -26,6 +26,11 @@ import {
 import { API_BASE, TOKEN_KEY } from "../../config";
 import { useUser } from "../../hooks/useUser";
 import LiveChatCard from "./LiveChatCard";
+import {
+  CHAT_NOTIFICATION_TARGET_EVENT,
+  consumeChatNotificationTarget,
+  type ChatNotificationTarget
+} from "../../hooks/useChatAlerts";
 
 type ChatThread = {
   id: string;
@@ -313,39 +318,39 @@ const getInitials = (value: string) => {
 const reactionOptions = [
   { key: "thumbs_up", label: "Like", icon: ThumbsUp, style: "text-sky-600 bg-sky-50" },
   { key: "heart", label: "Heart", icon: Heart, style: "text-rose-500 bg-rose-50" },
-  { key: "smile", label: "Smile", emoji: "😊", style: "text-amber-600 bg-amber-50" },
-  { key: "clap", label: "Clap", emoji: "👏", style: "text-emerald-600 bg-emerald-50" },
-  { key: "party", label: "Party", emoji: "🎉", style: "text-fuchsia-600 bg-fuchsia-50" },
-  { key: "fire", label: "Fire", emoji: "🔥", style: "text-orange-600 bg-orange-50" },
-  { key: "thinking", label: "Thinking", emoji: "🤔", style: "text-slate-600 bg-slate-100" },
-  { key: "eyes", label: "Eyes", emoji: "👀", style: "text-indigo-600 bg-indigo-50" }
+  { key: "smile", label: "Smile", emoji: "??", style: "text-amber-600 bg-amber-50" },
+  { key: "clap", label: "Clap", emoji: "??", style: "text-emerald-600 bg-emerald-50" },
+  { key: "party", label: "Party", emoji: "??", style: "text-fuchsia-600 bg-fuchsia-50" },
+  { key: "fire", label: "Fire", emoji: "??", style: "text-orange-600 bg-orange-50" },
+  { key: "thinking", label: "Thinking", emoji: "??", style: "text-slate-600 bg-slate-100" },
+  { key: "eyes", label: "Eyes", emoji: "??", style: "text-indigo-600 bg-indigo-50" }
 ];
 
 const emojiPickerOptions = [
-  "😀",
-  "😅",
-  "😂",
-  "😍",
-  "😎",
-  "😇",
-  "🤔",
-  "😮",
-  "😢",
-  "😡",
-  "👍",
-  "👎",
-  "👏",
-  "🙌",
-  "🙏",
-  "🎉",
-  "🔥",
-  "💯",
-  "✅",
-  "❗",
-  "❓",
-  "❤️",
-  "✨",
-  "💡"
+  "??",
+  "??",
+  "??",
+  "??",
+  "??",
+  "??",
+  "??",
+  "??",
+  "??",
+  "??",
+  "??",
+  "??",
+  "??",
+  "??",
+  "??",
+  "??",
+  "??",
+  "??",
+  "?",
+  "?",
+  "?",
+  "??",
+  "?",
+  "??"
 ];
 
 const summarizeReactions = (reactions?: ReactionItem[]) => {
@@ -617,7 +622,7 @@ const MessageInput = ({
   };
 
   const handleMic = () => {
-    replaceSelection("🎤 ");
+    replaceSelection("?? ");
   };
 
   const handleMentionSelect = (option: MentionOption) => {
@@ -942,6 +947,9 @@ const ChatPage = () => {
   const [error, setError] = useState("");
   const [threadTyping, setThreadTyping] = useState<Record<string, boolean>>({});
   const [presence, setPresence] = useState<Record<string, PresenceItem>>({});
+  const [dmUnreadByUser, setDmUnreadByUser] = useState<Record<string, number>>({});
+  const [pendingNotificationTarget, setPendingNotificationTarget] =
+    useState<ChatNotificationTarget | null>(null);
 
   const socketRef = useRef<WebSocket | null>(null);
   const heartbeatRef = useRef<number | null>(null);
@@ -953,6 +961,9 @@ const ChatPage = () => {
   const channelFileInputRef = useRef<HTMLInputElement | null>(null);
   const dmFileInputRef = useRef<HTMLInputElement | null>(null);
   const userSearchRef = useRef<HTMLInputElement | null>(null);
+  const currentUserIdRef = useRef<string | null>(null);
+  const seenRealtimeQueueRef = useRef<string[]>([]);
+  const seenRealtimeSetRef = useRef(new Set<string>());
 
   useEffect(() => {
     activeThreadRef.current = activeThreadId;
@@ -962,8 +973,58 @@ const ChatPage = () => {
     activeDmThreadRef.current = activeDmThreadId;
   }, [activeDmThreadId]);
 
+  useEffect(() => {
+    currentUserIdRef.current = user?.id || null;
+  }, [user?.id]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    const loadTarget = () => {
+      const target = consumeChatNotificationTarget();
+      if (!target) return;
+      setPendingNotificationTarget(target);
+    };
+
+    loadTarget();
+    window.addEventListener(CHAT_NOTIFICATION_TARGET_EVENT, loadTarget);
+    return () => {
+      window.removeEventListener(CHAT_NOTIFICATION_TARGET_EVENT, loadTarget);
+    };
+  }, []);
+
   const buildUrl = (path: string) => (API_BASE ? `${API_BASE}${path}` : path);
   const authHeaders = token ? { Authorization: `Bearer ${token}` } : {};
+
+  const clearDmUnreadForUser = useCallback((userId: string) => {
+    if (!userId) return;
+    setDmUnreadByUser((prev) => {
+      if (!prev[userId]) return prev;
+      const next = { ...prev };
+      delete next[userId];
+      return next;
+    });
+  }, []);
+
+  const shouldHandleRealtimeEvent = useCallback((scope: "support" | "dm" | "channel", roomId: string, message: any) => {
+    const messageId = String(message?.id || "").trim();
+    const sender = String(message?.sender_id || message?.sender_type || "").trim();
+    const createdAt = String(message?.created_at || "").trim();
+    const content = String(message?.content || "").trim();
+    const key = messageId
+      ? `${scope}:${messageId}`
+      : `${scope}:${roomId}:${sender}:${createdAt}:${content}`;
+
+    if (seenRealtimeSetRef.current.has(key)) return false;
+    seenRealtimeSetRef.current.add(key);
+    seenRealtimeQueueRef.current.push(key);
+
+    if (seenRealtimeQueueRef.current.length > 1500) {
+      const old = seenRealtimeQueueRef.current.shift();
+      if (old) seenRealtimeSetRef.current.delete(old);
+    }
+    return true;
+  }, []);
 
   const supportUnread = threads.reduce((sum, thread) => {
     const count = Number(thread.unread_count || 0);
@@ -988,6 +1049,71 @@ const ChatPage = () => {
       })),
     [channels, supportChannelId, supportUnread]
   );
+
+  useEffect(() => {
+    if (!pendingNotificationTarget) return;
+
+    if (pendingNotificationTarget.kind === "support") {
+      if (!supportChannelId && loadingChannels) return;
+
+      if (supportChannelId) {
+        setActiveChannelId(supportChannelId);
+      }
+      setActiveEmployeeId(null);
+
+      const targetThreadId = pendingNotificationTarget.threadId || "";
+      if (targetThreadId) {
+        const hasThread = threads.some((thread) => thread.id === targetThreadId);
+        if (!hasThread && loadingThreads) return;
+        setActiveThreadId(hasThread ? targetThreadId : null);
+      }
+
+      setPendingNotificationTarget(null);
+      return;
+    }
+
+    if (pendingNotificationTarget.kind === "dm") {
+      const senderId = pendingNotificationTarget.senderId || "";
+      if (!senderId) {
+        setPendingNotificationTarget(null);
+        return;
+      }
+
+      if (supportChannelId) {
+        setActiveChannelId(supportChannelId);
+      }
+      setActiveThreadId(null);
+      setActiveEmployeeId(senderId);
+      clearDmUnreadForUser(senderId);
+      setPendingNotificationTarget(null);
+      return;
+    }
+
+    if (pendingNotificationTarget.kind === "channel") {
+      const channelId = pendingNotificationTarget.channelId || "";
+      if (!channelId) {
+        setPendingNotificationTarget(null);
+        return;
+      }
+      const hasChannel = channels.some((channel) => channel.id === channelId);
+      if (!hasChannel && loadingChannels) return;
+
+      if (hasChannel) {
+        setActiveThreadId(null);
+        setActiveEmployeeId(null);
+        setActiveChannelId(channelId);
+      }
+      setPendingNotificationTarget(null);
+    }
+  }, [
+    channels,
+    loadingChannels,
+    loadingThreads,
+    pendingNotificationTarget,
+    clearDmUnreadForUser,
+    supportChannelId,
+    threads
+  ]);
 
   const userMap = useMemo(() => new Map(users.map((item) => [item.id, item])), [users]);
 
@@ -1089,10 +1215,11 @@ const ChatPage = () => {
               : "Worker",
           status: presenceStatus(item.id),
           type: "employee",
-          mentionLabel
+          mentionLabel,
+          unread: Number(dmUnreadByUser[item.id] || 0)
         };
       });
-  }, [users, presence, user?.id]);
+  }, [users, presence, user?.id, dmUnreadByUser]);
 
   const mentionOptions = useMemo(
     () =>
@@ -1612,6 +1739,7 @@ const ChatPage = () => {
       setDmMessages([]);
       return;
     }
+    clearDmUnreadForUser(activeEmployeeId);
     let mounted = true;
     setLoadingDmMessages(true);
     fetchDmThread(activeEmployeeId)
@@ -1629,7 +1757,7 @@ const ChatPage = () => {
     return () => {
       mounted = false;
     };
-  }, [activeEmployeeId, token]);
+  }, [activeEmployeeId, clearDmUnreadForUser, token]);
 
   useEffect(() => {
     if (!isEmployee || !token) return;
@@ -1695,6 +1823,7 @@ const ChatPage = () => {
         if (payload.type === "message:new" && payload.thread_id && payload.message) {
           const threadId = String(payload.thread_id);
           const message = payload.message as ChatMessage;
+          if (!shouldHandleRealtimeEvent("support", threadId, message)) return;
 
           setThreads((prev) =>
             prev.map((thread) => {
@@ -1727,6 +1856,7 @@ const ChatPage = () => {
         if (payload.type === "channel:message:new" && payload.channel_id && payload.message) {
           const channelId = String(payload.channel_id);
           const message = payload.message as ChatChannelMessage;
+          if (!shouldHandleRealtimeEvent("channel", channelId, message)) return;
           if (activeChannelRef.current === channelId) {
             setChannelMessages((prev) => {
               const exists = prev.some((item) => item.id === message.id);
@@ -1742,6 +1872,10 @@ const ChatPage = () => {
         if (payload.type === "dm:message:new" && payload.thread_id && payload.message) {
           const threadId = String(payload.thread_id);
           const message = payload.message as ChatDmMessage;
+          if (!shouldHandleRealtimeEvent("dm", threadId, message)) return;
+          const senderId = String(message.sender_id || "");
+          const currentUserId = String(currentUserIdRef.current || "");
+
           if (activeDmThreadRef.current === threadId) {
             setDmMessages((prev) => {
               const exists = prev.some((item) => item.id === message.id);
@@ -1751,6 +1885,11 @@ const ChatPage = () => {
                 { ...message, reactions: message.reactions || [], attachments: message.attachments || [] }
               ];
             });
+          } else if (senderId && senderId !== currentUserId) {
+            setDmUnreadByUser((prev) => ({
+              ...prev,
+              [senderId]: Number(prev[senderId] || 0) + 1
+            }));
           }
         }
       } catch {
@@ -1769,7 +1908,7 @@ const ChatPage = () => {
     return () => {
       socket.close();
     };
-  }, [isEmployee, token]);
+  }, [isEmployee, shouldHandleRealtimeEvent, token]);
 
   useEffect(() => {
     const socket = socketRef.current;
@@ -1923,6 +2062,7 @@ const ChatPage = () => {
                       type="button"
                       onClick={() => {
                         setActiveEmployeeId(person.id);
+                        clearDmUnreadForUser(person.id);
                       }}
                       className={`w-full rounded-xl px-3 py-2 text-left transition-colors ${
                         activeEmployeeId === person.id ? "bg-accent-primary/10" : "hover:bg-gray-100"
@@ -1960,6 +2100,11 @@ const ChatPage = () => {
                               ) : null}
                             </div>
                             <div className="text-[11px] text-ink-muted">{person.role}</div>
+                            {Number(person.unread || 0) > 0 ? (
+                              <div className="mt-1 inline-flex rounded-full bg-accent-primary px-2 py-0.5 text-[11px] font-semibold text-white">
+                                {person.unread}
+                              </div>
+                            ) : null}
                           </div>
                         </div>
                       </div>
@@ -2449,3 +2594,5 @@ const ChatPage = () => {
 };
 
 export default ChatPage;
+
+
