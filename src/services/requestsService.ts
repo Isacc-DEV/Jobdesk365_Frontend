@@ -11,11 +11,12 @@ const resolveBase = (roles?: unknown) => {
 const apiFetch = async (path: string, options: RequestInit = {}, roles?: unknown) => {
   const token = getToken();
   if (!token) throw new Error("Missing token");
+  const isFormData = typeof FormData !== "undefined" && options.body instanceof FormData;
   const res = await fetch(`${resolveBase(roles)}${path}`, {
     ...options,
     headers: {
       Authorization: `Bearer ${token}`,
-      "Content-Type": "application/json",
+      ...(isFormData ? {} : { "Content-Type": "application/json" }),
       ...(options.headers || {})
     }
   });
@@ -31,8 +32,10 @@ const apiFetch = async (path: string, options: RequestInit = {}, roles?: unknown
   return res.json();
 };
 
+type TalentRole = "bidder" | "caller";
+
 export const requestsService = {
-  async listTalents(role: "bidder" | "caller", options?: { roles?: unknown }) {
+  async listTalents(role: TalentRole, options?: { roles?: unknown }) {
     const data = await apiFetch(`/talents?role=${encodeURIComponent(role)}`, { method: "GET" }, options?.roles);
     return Array.isArray(data?.items) ? data.items : [];
   },
@@ -46,7 +49,7 @@ export const requestsService = {
   },
 
   async createRequest(payload: {
-    role: "bidder" | "caller";
+    role: TalentRole;
     detail?: any;
     assignee_user_id?: string | null;
     when_at?: string | null;
@@ -79,7 +82,7 @@ export const requestsService = {
   },
 
   async createTalent(payload: {
-    role: "bidder" | "caller";
+    role: TalentRole;
     user_id?: string;
     email?: string;
     username?: string;
@@ -89,6 +92,33 @@ export const requestsService = {
   }, options?: { roles?: unknown }) {
     return apiFetch("/talents", {
       method: "POST",
+      body: JSON.stringify(payload)
+    }, options?.roles);
+  },
+
+  async updateMyTalentCard(payload: {
+    role: TalentRole;
+    bio?: string;
+  }, options?: { roles?: unknown }) {
+    return apiFetch("/talents/me", {
+      method: "PATCH",
+      body: JSON.stringify(payload)
+    }, options?.roles);
+  },
+
+  async uploadMyTalentCardImage(payload: FormData, options?: { roles?: unknown }) {
+    return apiFetch("/talents/me/image", {
+      method: "POST",
+      body: payload
+    }, options?.roles);
+  },
+
+  async updateTalentCardByAdmin(userId: string, payload: {
+    role: TalentRole;
+    rate: number;
+  }, options?: { roles?: unknown }) {
+    return apiFetch(`/talents/${encodeURIComponent(userId)}`, {
+      method: "PATCH",
       body: JSON.stringify(payload)
     }, options?.roles);
   },
