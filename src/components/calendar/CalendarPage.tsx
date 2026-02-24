@@ -924,7 +924,7 @@ const CalendarPage = () => {
         open={callerModalOpen}
         title={callerMode === "assign" ? "Assign caller" : "Request caller"}
         roleLabel="Caller"
-        rateLabel="Hourly rate"
+        rateLabel="Rate per minute"
         showDetail={false}
         showJobUrl={callerMode !== "assign"}
         showMeetingUrl={callerMode !== "assign"}

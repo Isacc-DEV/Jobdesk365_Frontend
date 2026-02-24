@@ -23,7 +23,7 @@ const formatRate = (value, role) => {
   const base = formatMoney(value);
   if (base === "-") return base;
   const normalizedRole = String(role || "").toLowerCase();
-  const suffix = normalizedRole === "caller" ? "/minutes" : "/application";
+  const suffix = normalizedRole === "caller" ? "/minute" : "/application";
   return `${base}${suffix}`;
 };
 
