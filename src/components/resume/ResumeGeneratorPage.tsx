@@ -13,48 +13,58 @@ import {
 import { useProfiles } from "../../hooks/useProfiles";
 import { API_BASE, AI_SERVICE_URL, TOKEN_KEY } from "../../config";
 import { useUser } from "../../hooks/useUser";
+import { renderResumeTemplate } from "../../lib/resumeTemplateRenderer";
 import {
   getProfilesEndpointPathByRoles,
   getProfilesRouteByRoles
 } from "../../lib/profilesAccess";
 
-const shuffleArray = <T,>(items: T[]) => {
-  if (!Array.isArray(items) || items.length < 2) return items;
-  const next = [...items];
-  for (let i = next.length - 1; i > 0; i -= 1) {
-    const j = Math.floor(Math.random() * (i + 1));
-    [next[i], next[j]] = [next[j], next[i]];
-  }
-  return next;
+type TailorBulletType = "new" | "updated";
+
+type TailorBulletUpdate = {
+  text: string;
+  type: TailorBulletType;
+  original_index?: number;
+  needs_input?: boolean;
 };
 
-const escapeHtml = (value: string) =>
-  value
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&#39;");
-
-const getValueByPath = (source: any, path: string) => {
-  if (!source || !path) return undefined;
-  return path.split(".").reduce((acc, key) => (acc ? acc[key] : undefined), source);
+type TailorBulletGroup = {
+  company_index: number;
+  bullets: TailorBulletUpdate[];
 };
 
-const hydrateTemplate = (template: string, data: any) => {
-  if (!template) return "";
-  return template.replace(/{{\s*([^}]+)\s*}}/g, (_match, token) => {
-    const value = getValueByPath(data, token.trim());
-    if (value === null || value === undefined) return "";
-    if (typeof value === "object") {
-      try {
-        return JSON.stringify(value);
-      } catch {
-        return "";
-      }
-    }
-    return String(value);
-  });
+type TailorUpdates = {
+  headline: string;
+  summary: string;
+  bullets: TailorBulletGroup[];
+};
+
+type TailorResponse = {
+  updates: TailorUpdates;
+  resume?: any;
+  match_score?: number;
+};
+
+type ResumeViewBullet = {
+  text: string;
+  needsInput: boolean;
+  changeType: "none" | "new" | "updated";
+};
+
+type ResumeViewExperience = {
+  company: string;
+  role: string;
+  dates: string;
+  bullets: ResumeViewBullet[];
+};
+
+type ResumeView = {
+  name: string;
+  headline: string;
+  summaryLines: string[];
+  skills: string[];
+  experience: ResumeViewExperience[];
+  addedSkills: Set<string>;
 };
 
 const injectScript = (html: string, scriptTag: string) => {
@@ -121,92 +131,104 @@ const normalizeBaseResumeForTemplate = (rawResume: any) => {
   };
 };
 
-const buildTailoredResumePayload = (rawResume: any, aiData: any) => {
-  const base = normalizeBaseResumeForTemplate(rawResume);
-  if (!aiData) return base;
+const splitSummaryLines = (summary: string) =>
+  String(summary || "")
+    .replace(/\\r\\n/g, "\n")
+    .replace(/\\n/g, "\n")
+    .split("\n")
+    .map((line) => line.trim())
+    .filter(Boolean);
 
-  if (aiData.headline_new) {
-    base.Profile = { ...base.Profile, headline: aiData.headline_new };
+const wrapHtmlIfNeeded = (value: string) => {
+  const trimmed = value.trim().toLowerCase();
+  if (!trimmed.startsWith("<!doctype") && !trimmed.startsWith("<html")) {
+    return `<!doctype html><html><body>${value}</body></html>`;
   }
-  if (Array.isArray(aiData.summary_new) && aiData.summary_new.length) {
-    base.summary = { text: aiData.summary_new.filter(Boolean).join("\n") };
-  }
-  const skillsToAdd = Array.isArray(aiData.skills_to_add)
-    ? aiData.skills_to_add.map((item: any) => item?.skill).filter(Boolean)
-    : [];
-  base.skills = { raw: mergeSkills(base.skills?.raw || [], skillsToAdd) };
+  return value;
+};
 
-  const bulletGroups = Array.isArray(aiData.experience_bullets_to_add)
-    ? aiData.experience_bullets_to_add
-    : [];
-  bulletGroups.forEach((group: any) => {
-    const index = Number(group?.company_index);
-    if (!Number.isFinite(index)) return;
-    if (!base.workExperience?.[index]) return;
-    const bullets = Array.isArray(group?.bullets) ? group.bullets : [];
-    bullets.forEach((bullet: any) => {
-      if (bullet?.text) {
-        base.workExperience[index].bullets.push(bullet.text);
-      }
-    });
+const serializeForScript = (value: unknown) =>
+  JSON.stringify(value)
+    .replace(/</g, "\\u003c")
+    .replace(/\u2028/g, "\\u2028")
+    .replace(/\u2029/g, "\\u2029");
+
+const sanitizeFileName = (value: string) =>
+  (value || "Resume")
+    .replace(/[\\/:*?"<>|]+/g, "-")
+    .replace(/\s+/g, " ")
+    .trim();
+
+const getPdfFilenameFromHeader = (header: string | null) => {
+  if (!header) return null;
+  const utf8Match = header.match(/filename\*=UTF-8''([^;]+)/i);
+  if (utf8Match?.[1]) {
+    try {
+      return decodeURIComponent(utf8Match[1]).replace(/^"|"$/g, "");
+    } catch {
+      return utf8Match[1].replace(/^"|"$/g, "");
+    }
+  }
+  const basicMatch = header.match(/filename="?([^"]+)"?/i);
+  return basicMatch?.[1] ? basicMatch[1] : null;
+};
+
+const exportHtmlAsPdf = async (html: string, title: string) => {
+  const token = typeof window !== "undefined" ? window.localStorage.getItem(TOKEN_KEY) : null;
+  const base = API_BASE || (typeof window !== "undefined" ? window.location.origin : "");
+  const url = new URL("/templates/render-pdf", base).toString();
+  const fileName = sanitizeFileName(title || "Resume");
+
+  const res = await fetch(url, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      ...(token ? { Authorization: `Bearer ${token}` } : {})
+    },
+    body: JSON.stringify({ html, filename: fileName })
   });
 
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(text || `Failed to export PDF (${res.status})`);
+  }
+
+  const blob = await res.blob();
+  const headerName = getPdfFilenameFromHeader(res.headers.get("content-disposition"));
+  const downloadName = headerName || `${fileName}.pdf`;
+  const blobUrl = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = blobUrl;
+  link.download = downloadName;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(blobUrl);
+};
+
+const buildTailoredResumePayload = (rawResume: any, tailoredView: ResumeView | null) => {
+  const base = normalizeBaseResumeForTemplate(rawResume);
+  if (!tailoredView) return base;
+
+  if (tailoredView.headline) {
+    base.Profile = { ...base.Profile, headline: tailoredView.headline };
+  }
+  base.summary = { text: (tailoredView.summaryLines || []).join("\n") };
+  base.skills = { raw: Array.isArray(tailoredView.skills) ? tailoredView.skills : [] };
+  if (Array.isArray(base.workExperience) && Array.isArray(tailoredView.experience)) {
+    base.workExperience = base.workExperience.map((item: any, index: number) => {
+      const tailoredExperience = tailoredView.experience[index];
+      if (!tailoredExperience) return item;
+      return {
+        ...item,
+        bullets: Array.isArray(tailoredExperience.bullets)
+          ? tailoredExperience.bullets.map((bullet) => bullet.text)
+          : []
+      };
+    });
+  }
+
   return base;
-};
-
-const buildPreviewDocument = (templateHtml: string, aiData: any, title: string) => {
-  const safeJson = escapeHtml(JSON.stringify(aiData || {}, null, 2));
-  const encodedTemplate = JSON.stringify(templateHtml || "");
-  return `<!doctype html>
-<html>
-  <head>
-    <meta charset="utf-8" />
-    <title>${escapeHtml(title || "Resume Preview")}</title>
-    <style>
-      body { font-family: "Inter", system-ui, sans-serif; margin: 0; background: #f5f7fb; }
-      .toolbar { padding: 16px 24px; background: #fff; border-bottom: 1px solid #e5e7eb; }
-      .layout { display: grid; grid-template-columns: 1fr 360px; gap: 16px; padding: 20px; }
-      .panel { background: #fff; border: 1px solid #e5e7eb; border-radius: 12px; }
-      .template { padding: 16px; min-height: 70vh; }
-      .json { padding: 16px; font-size: 12px; white-space: pre-wrap; }
-      iframe { width: 100%; min-height: 70vh; border: 0; }
-      @media print { .toolbar, .json-panel { display: none; } .layout { grid-template-columns: 1fr; } }
-    </style>
-  </head>
-  <body>
-    <div class="toolbar"><strong>Resume Preview</strong></div>
-    <div class="layout">
-      <div class="panel template">
-        <iframe id="templateFrame" title="Resume Template"></iframe>
-      </div>
-      <div class="panel json-panel">
-        <div class="json">${safeJson}</div>
-      </div>
-    </div>
-    <script>
-      const frame = document.getElementById("templateFrame");
-      frame.srcdoc = ${encodedTemplate};
-    </script>
-  </body>
-</html>`;
-};
-
-const buildPrintDocument = (templateHtml: string, title: string) => {
-  const hasHtmlTag = /<html[\s>]/i.test(templateHtml);
-  if (hasHtmlTag) return templateHtml;
-  return `<!doctype html>
-<html>
-  <head>
-    <meta charset="utf-8" />
-    <title>${escapeHtml(title || "Resume")}</title>
-    <style>
-      body { font-family: "Inter", system-ui, sans-serif; margin: 0; }
-    </style>
-  </head>
-  <body>
-    ${templateHtml}
-  </body>
-</html>`;
 };
 
 const parseResumeRaw = (raw: any) => {
@@ -241,37 +263,32 @@ const normalizeBullets = (value: any): string[] => {
   return [];
 };
 
-const normalizeExperience = (exp: any) => {
+const normalizeExperience = (exp: any): ResumeViewExperience => {
   const endDateValue = exp?.end_date || exp?.endDate || "";
   const isPresent = exp?.isPresent || String(endDateValue).toLowerCase() === "present";
   const startDate = exp?.startDate || exp?.start_date || "";
   const endDate = isPresent ? "Present" : endDateValue;
   const dates = [startDate, endDate].filter(Boolean).join(" - ");
   const bullets = normalizeBullets(exp?.bullets ?? exp?.bullet_points ?? exp?.bulletPoints ?? exp?.bullet ?? "").map(
-    (text) => ({ text, needsInput: false, isAdded: false })
+    (text) => ({ text, needsInput: false, changeType: "none" as const })
   );
 
   return {
     company: exp?.companyTitle || exp?.company_name || exp?.companyName || "",
     role: exp?.roleTitle || exp?.role_title || "",
     dates,
-    bullets: shuffleArray(bullets)
+    bullets
   };
 };
 
-const buildBaseResumeView = (profile: any) => {
+const buildBaseResumeView = (profile: any): ResumeView => {
   const raw = profile?.raw || {};
   const resume = raw.base_resume ?? raw.baseResume ?? {};
   const profileBlock = resume.Profile || resume.profile || {};
   const summaryValue = resume.summary?.text || resume.summary?.summary || resume.summary || "";
   const summaryLines = Array.isArray(summaryValue)
-    ? summaryValue.filter(Boolean)
-    : typeof summaryValue === "string"
-    ? summaryValue
-        .split("\n")
-        .map((line) => line.trim())
-        .filter(Boolean)
-    : [];
+    ? summaryValue.filter(Boolean).map((line: any) => String(line).trim()).filter(Boolean)
+    : splitSummaryLines(summaryValue);
   const skillsValue = resume.skills?.raw || resume.skills?.skills || resume.skills || resume.skill || [];
   const skills = Array.isArray(skillsValue)
     ? skillsValue.filter(Boolean)
@@ -296,94 +313,173 @@ const buildBaseResumeView = (profile: any) => {
     headline: profileBlock.headline || resume.headline || profile?.subtitle || "",
     summaryLines,
     skills,
-    experience: experienceItems.map(normalizeExperience)
+    experience: experienceItems.map(normalizeExperience),
+    addedSkills: new Set<string>()
   };
 };
 
-const mergeSkills = (baseSkills: string[], addedSkills: string[]) => {
-  const seen = new Set<string>();
-  const merged: string[] = [];
-  const pushSkill = (skill: string) => {
-    const key = skill.toLowerCase();
-    if (seen.has(key)) return;
-    seen.add(key);
-    merged.push(skill);
-  };
-  baseSkills.forEach((skill) => {
-    if (skill) pushSkill(skill);
-  });
-  addedSkills.forEach((skill) => {
-    if (skill) pushSkill(skill);
-  });
-  return merged;
-};
-
-const applyBulletsToAdd = (baseView: any, bulletsToAdd: any) => {
-  if (!baseView) return null;
-  const updates = Array.isArray(bulletsToAdd) ? bulletsToAdd : [];
-  const nextExperience = (baseView.experience || []).map((item: any) => ({
+const cloneExperience = (experience: ResumeViewExperience[]): ResumeViewExperience[] =>
+  experience.map((item) => ({
     ...item,
     bullets: Array.isArray(item.bullets)
-      ? item.bullets.map((bullet: any) => ({ ...bullet, isAdded: Boolean(bullet.isAdded) }))
+      ? item.bullets.map((bullet) => ({ ...bullet }))
       : []
   }));
 
-  updates.forEach((group) => {
-    const index = Number(group?.company_index);
-    if (!Number.isFinite(index)) return;
-    if (index < 0 || index >= nextExperience.length) return;
-    const bullets = Array.isArray(group?.bullets) ? group.bullets : [];
-    bullets.forEach((bullet: any) => {
-      if (!bullet?.text) return;
-      nextExperience[index].bullets.push({
-        text: bullet.text,
-        needsInput: Boolean(bullet.needs_input),
-        isAdded: true
+const applyBulletUpdates = (baseView: ResumeView, updates: TailorUpdates) => {
+  const nextExperience = cloneExperience(baseView.experience || []);
+  const groups = Array.isArray(updates.bullets) ? updates.bullets : [];
+
+  groups.forEach((group) => {
+    const companyIndex = Number(group.company_index);
+    if (!Number.isInteger(companyIndex)) return;
+    if (companyIndex < 0 || companyIndex >= nextExperience.length) return;
+    const companyBullets = nextExperience[companyIndex].bullets;
+    if (!Array.isArray(companyBullets)) return;
+
+    group.bullets
+      .filter((bullet) => bullet.type === "updated")
+      .forEach((bullet) => {
+        if (!Number.isInteger(bullet.original_index)) return;
+        const originalIndex = Number(bullet.original_index);
+        if (originalIndex < 0 || originalIndex >= companyBullets.length) return;
+        companyBullets[originalIndex] = {
+          text: bullet.text,
+          needsInput: Boolean(bullet.needs_input),
+          changeType: "updated"
+        };
       });
-    });
+
+    group.bullets
+      .filter((bullet) => bullet.type === "new")
+      .forEach((bullet) => {
+        const insertIndex = Math.floor(Math.random() * (companyBullets.length + 1));
+        companyBullets.splice(insertIndex, 0, {
+          text: bullet.text,
+          needsInput: Boolean(bullet.needs_input),
+          changeType: "new"
+        });
+      });
   });
 
-  nextExperience.forEach((item) => {
-    if (Array.isArray(item?.bullets)) {
-      item.bullets = shuffleArray(item.bullets);
-    }
-  });
-
-  return { ...baseView, experience: nextExperience };
+  return nextExperience;
 };
 
-const buildTailoredResumeView = (aiData: any, baseView: any) => {
-  if (!aiData || !baseView) return null;
-  const summaryLines = Array.isArray(aiData?.summary_new)
-    ? aiData.summary_new.filter(Boolean)
-    : baseView.summaryLines;
-  const skillsToAdd = Array.isArray(aiData?.skills_to_add)
-    ? aiData.skills_to_add.map((item: any) => item?.skill).filter(Boolean)
-    : [];
-  const mergedSkills = mergeSkills(baseView.skills || [], skillsToAdd);
-  const addedSkills = new Set(skillsToAdd.map((skill: string) => skill.toLowerCase()));
-  const experienceWithAdds = applyBulletsToAdd(baseView, aiData?.experience_bullets_to_add);
+const buildTailoredResumeView = (updates: TailorUpdates, baseView: ResumeView) => {
+  if (!updates || !baseView) return null;
+  const summaryLines = splitSummaryLines(updates.summary);
 
   return {
-    name: baseView.name || "",
-    headline: aiData?.headline_new || baseView.headline || "",
-    summaryLines,
-    skills: mergedSkills,
-    experience: experienceWithAdds?.experience || baseView.experience,
-    addedSkills
+    ...baseView,
+    headline: updates.headline || baseView.headline || "",
+    summaryLines: summaryLines.length ? summaryLines : baseView.summaryLines,
+    experience: applyBulletUpdates(baseView, updates),
+    addedSkills: new Set<string>()
   };
 };
 
-const normalizeAiResponse = (payload: any) => {
-  if (!payload) return null;
+const normalizeAiResponse = (payload: any): { data: TailorResponse | null; error?: string } => {
+  if (!payload) {
+    return { data: null, error: "AI response was empty." };
+  }
+
+  let parsed = payload;
   if (typeof payload === "string") {
     try {
-      return JSON.parse(payload);
+      parsed = JSON.parse(payload);
     } catch {
-      return null;
+      return { data: null, error: "AI response was not valid JSON." };
     }
   }
-  return payload;
+
+  if (!parsed || typeof parsed !== "object") {
+    return { data: null, error: "Invalid AI response format." };
+  }
+
+  const updatesRaw = parsed?.updates;
+  if (!updatesRaw || typeof updatesRaw !== "object" || Array.isArray(updatesRaw)) {
+    return { data: null, error: "Invalid AI response: missing `updates` object." };
+  }
+  if (typeof updatesRaw.headline !== "string") {
+    return { data: null, error: "Invalid AI response: `updates.headline` must be a string." };
+  }
+  if (typeof updatesRaw.summary !== "string") {
+    return { data: null, error: "Invalid AI response: `updates.summary` must be a string." };
+  }
+  if (!Array.isArray(updatesRaw.bullets)) {
+    return { data: null, error: "Invalid AI response: `updates.bullets` must be an array." };
+  }
+
+  const normalizedGroups: TailorBulletGroup[] = [];
+  for (let groupIndex = 0; groupIndex < updatesRaw.bullets.length; groupIndex += 1) {
+    const group = updatesRaw.bullets[groupIndex];
+    if (!group || typeof group !== "object" || Array.isArray(group)) {
+      return { data: null, error: `Invalid AI response: updates.bullets[${groupIndex}] must be an object.` };
+    }
+    if (!Number.isInteger(group.company_index)) {
+      return {
+        data: null,
+        error: `Invalid AI response: updates.bullets[${groupIndex}].company_index must be an integer.`
+      };
+    }
+    if (!Array.isArray(group.bullets)) {
+      return { data: null, error: `Invalid AI response: updates.bullets[${groupIndex}].bullets must be an array.` };
+    }
+
+    const normalizedBullets: TailorBulletUpdate[] = [];
+    for (let bulletIndex = 0; bulletIndex < group.bullets.length; bulletIndex += 1) {
+      const bullet = group.bullets[bulletIndex];
+      if (!bullet || typeof bullet !== "object" || Array.isArray(bullet)) {
+        return {
+          data: null,
+          error: `Invalid AI response: bullet at updates.bullets[${groupIndex}].bullets[${bulletIndex}] is invalid.`
+        };
+      }
+      const text = typeof bullet.text === "string" ? bullet.text.trim() : "";
+      if (!text) {
+        return {
+          data: null,
+          error: `Invalid AI response: updates.bullets[${groupIndex}].bullets[${bulletIndex}].text is required.`
+        };
+      }
+      if (bullet.type !== "new" && bullet.type !== "updated") {
+        return {
+          data: null,
+          error: `Invalid AI response: updates.bullets[${groupIndex}].bullets[${bulletIndex}].type must be "new" or "updated".`
+        };
+      }
+      if (bullet.type === "updated" && !Number.isInteger(bullet.original_index)) {
+        return {
+          data: null,
+          error: `Invalid AI response: updates.bullets[${groupIndex}].bullets[${bulletIndex}].original_index must be an integer for updated bullets.`
+        };
+      }
+
+      normalizedBullets.push({
+        text,
+        type: bullet.type,
+        original_index: bullet.type === "updated" ? Number(bullet.original_index) : undefined,
+        needs_input: Boolean(bullet.needs_input)
+      });
+    }
+
+    normalizedGroups.push({
+      company_index: Number(group.company_index),
+      bullets: normalizedBullets
+    });
+  }
+
+  return {
+    data: {
+      updates: {
+        headline: updatesRaw.headline.trim(),
+        summary: updatesRaw.summary,
+        bullets: normalizedGroups
+      },
+      resume: parsed?.resume,
+      match_score: typeof parsed?.match_score === "number" ? parsed.match_score : undefined
+    }
+  };
 };
 
 const ResumeGeneratorPage = () => {
@@ -399,8 +495,8 @@ const ResumeGeneratorPage = () => {
   const [jobDescription, setJobDescription] = useState("");
   const [isGenerating, setIsGenerating] = useState(false);
   const [generationError, setGenerationError] = useState("");
-  const [aiResult, setAiResult] = useState<any | null>(null);
-  const [compareMode, setCompareMode] = useState(false);
+  const [aiResult, setAiResult] = useState<TailorResponse | null>(null);
+  const [tailoredResumeView, setTailoredResumeView] = useState<ResumeView | null>(null);
   const [highlightResult, setHighlightResult] = useState(false);
   const [previewLoading, setPreviewLoading] = useState(false);
   const resultRef = useRef<HTMLDivElement | null>(null);
@@ -413,11 +509,6 @@ const ResumeGeneratorPage = () => {
   const baseResumeView = useMemo(
     () => (selectedProfile ? buildBaseResumeView(selectedProfile) : null),
     [selectedProfile]
-  );
-
-  const tailoredResumeView = useMemo(
-    () => (aiResult && baseResumeView ? buildTailoredResumeView(aiResult, baseResumeView) : null),
-    [aiResult, baseResumeView]
   );
 
   const scoreValue = useMemo(() => {
@@ -444,14 +535,14 @@ const ResumeGeneratorPage = () => {
   const selectedHasTemplate = Boolean(
     selectedProfile?.templateId || selectedProfile?.raw?.resume_template_id
   );
-  const canPreview = Boolean(aiResult && selectedProfile && selectedHasTemplate);
+  const canPreview = Boolean(tailoredResumeView && aiResult && selectedProfile && selectedHasTemplate);
 
   const handleSelectProfile = (profile: any) => {
     const locked = Boolean(profile?.raw?.locked || profile?.raw?.permission === "locked");
     if (locked) return;
     setSelectedId(profile.id);
     setAiResult(null);
-    setCompareMode(false);
+    setTailoredResumeView(null);
     setGenerationError("");
   };
 
@@ -491,12 +582,19 @@ const ResumeGeneratorPage = () => {
 
       const contentType = res.headers.get("content-type") || "";
       const rawPayload = contentType.includes("application/json") ? await res.json() : await res.text();
-      const aiData = normalizeAiResponse(rawPayload);
-      if (!aiData) {
-        throw new Error("AI response was empty.");
+      const normalized = normalizeAiResponse(rawPayload);
+      if (!normalized.data) {
+        throw new Error(normalized.error || "Invalid AI response format.");
       }
-      setAiResult(aiData);
-      setCompareMode(false);
+      if (!baseResumeView) {
+        throw new Error("Base resume is not available for this profile.");
+      }
+      const nextTailoredView = buildTailoredResumeView(normalized.data.updates, baseResumeView);
+      if (!nextTailoredView) {
+        throw new Error("Unable to build tailored resume from updates.");
+      }
+      setAiResult(normalized.data);
+      setTailoredResumeView(nextTailoredView);
       setHighlightResult(true);
       window.setTimeout(() => setHighlightResult(false), 1200);
       resultRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
@@ -529,7 +627,7 @@ const ResumeGeneratorPage = () => {
   };
 
   const openPreview = async (autoPrint: boolean) => {
-    if (!selectedProfile || !aiResult) return;
+    if (!selectedProfile || !aiResult || !tailoredResumeView) return;
     const templateId = selectedProfile?.templateId || selectedProfile?.raw?.resume_template_id;
     if (!templateId) {
       setGenerationError("Select a resume template to preview.");
@@ -545,34 +643,25 @@ const ResumeGeneratorPage = () => {
       const baseResumeRaw = parseResumeRaw(
         selectedProfile?.raw?.base_resume ?? selectedProfile?.raw?.baseResume ?? {}
       );
-      const tailoredPayload = buildTailoredResumePayload(baseResumeRaw, aiResult);
-      const dataBundle = { resume: tailoredPayload, tailored: aiResult };
-      const hydratedTemplate = hydrateTemplate(String(template.code), dataBundle);
-      const dataScript = `<script>window.__RESUME__ = ${JSON.stringify(
-        tailoredPayload
-      )}; window.__TAILORED__ = ${JSON.stringify(aiResult)};</script>`;
-      const templateWithData = injectScript(hydratedTemplate, dataScript);
-
-      const previewWindow = window.open("", "_blank");
-      if (!previewWindow) {
-        throw new Error("Popup blocked. Please allow popups and try again.");
-      }
+      const tailoredPayload = buildTailoredResumePayload(baseResumeRaw, tailoredResumeView);
+      const renderedTemplate = renderResumeTemplate(String(template.code), tailoredPayload);
+      const safeResume = serializeForScript(tailoredPayload);
+      const safeTailored = serializeForScript(aiResult);
+      const dataScript = `<script>window.__RESUME__ = ${safeResume}; window.__TAILORED__ = ${safeTailored};</script>`;
+      const baseTemplate = wrapHtmlIfNeeded(renderedTemplate || String(template.code));
+      const templateWithData = injectScript(baseTemplate, dataScript);
 
       if (autoPrint) {
-        const doc = buildPrintDocument(templateWithData, template.title || "Resume");
-        previewWindow.document.open();
-        previewWindow.document.write(doc);
-        previewWindow.document.close();
-        previewWindow.focus();
-        previewWindow.onload = () => {
-          previewWindow.print();
-        };
+        await exportHtmlAsPdf(templateWithData, template.title || selectedProfile?.name || "Resume");
         return;
       }
 
-      const doc = buildPreviewDocument(templateWithData, aiResult, template.title || "Resume Preview");
+      const previewWindow = window.open("", "_blank", "noopener,noreferrer");
+      if (!previewWindow) {
+        throw new Error("Popup blocked. Please allow popups and try again.");
+      }
       previewWindow.document.open();
-      previewWindow.document.write(doc);
+      previewWindow.document.write(templateWithData);
       previewWindow.document.close();
     } catch (err: any) {
       setGenerationError(err?.message || "Unable to open preview.");
@@ -587,7 +676,10 @@ const ResumeGeneratorPage = () => {
     window.dispatchEvent(new PopStateEvent("popstate"));
   };
 
-  const renderResumeView = (view: any, options?: { highlightAdded?: boolean; addedSkills?: Set<string> }) => {
+  const renderResumeView = (
+    view: ResumeView | null,
+    options?: { highlightAdded?: boolean; addedSkills?: Set<string> }
+  ) => {
     if (!view) return null;
     const highlightAdded = options?.highlightAdded ?? false;
     const addedSkills = options?.addedSkills ?? new Set<string>();
@@ -656,8 +748,12 @@ const ResumeGeneratorPage = () => {
                     <ul className="list-disc pl-5 space-y-2 text-sm text-ink">
                       {item.bullets.map((bullet: any, bulletIndex: number) => (
                         <li key={`${view.name}-exp-${index}-${bulletIndex}`} className="leading-relaxed">
-                          {highlightAdded && bullet.isAdded ? (
+                          {highlightAdded && bullet.changeType === "new" ? (
                             <span className="inline rounded bg-amber-50 border border-amber-100 px-1.5 py-0.5">
+                              {bullet.text}
+                            </span>
+                          ) : highlightAdded && bullet.changeType === "updated" ? (
+                            <span className="inline rounded bg-rose-50 border border-rose-100 px-1.5 py-0.5">
                               {bullet.text}
                             </span>
                           ) : (
@@ -906,18 +1002,6 @@ const ResumeGeneratorPage = () => {
                       Regenerate
                     </div>
                   </button>
-                  <button
-                    type="button"
-                    onClick={() => setCompareMode((prev) => !prev)}
-                    disabled={!tailoredResumeView || !baseResumeView}
-                    className={`px-3 py-2 rounded-lg text-xs font-semibold transition ${
-                      compareMode
-                        ? "bg-accent-primary text-white"
-                        : "bg-border text-ink hover:bg-[#DDE3EA]"
-                    } disabled:opacity-50 disabled:cursor-not-allowed`}
-                  >
-                    {compareMode ? "Hide Compare" : "Compare with Base"}
-                  </button>
                 </div>
               </div>
             </div>
@@ -953,7 +1037,7 @@ const ResumeGeneratorPage = () => {
                   ref={resultRef}
                   className={`mt-6 mx-auto w-full rounded-lg bg-page border border-border p-6 transition ${
                     highlightResult ? "ring-2 ring-accent-primary/40" : ""
-                  } ${compareMode ? "max-w-none" : "max-w-[640px]"}`}
+                  } max-w-[640px]`}
                 >
                   <div className="flex items-center justify-between">
                     <div>
@@ -969,61 +1053,16 @@ const ResumeGeneratorPage = () => {
                     <div className="rounded-lg bg-white border border-border px-4 py-3 text-sm text-ink">
                       <p className="text-xs uppercase tracking-[0.2em] text-ink-muted">Match insights</p>
                       <p className="mt-2 text-sm text-ink-muted">
-                        Tailored summary and add-only bullets are aligned to the JD. Added bullets are highlighted in
-                        green; items that need your input are flagged.
+                        Tailored headline and summary are aligned to the JD. Updated bullets are highlighted in pink,
+                        newly added bullets in yellow, and items needing your input are flagged.
                       </p>
                     </div>
-
-                    {compareMode ? (
-                      <div className="space-y-4">
-                        <div className="flex flex-wrap items-center gap-2 text-xs font-semibold">
-                          <span className="inline-flex items-center gap-2 rounded-full bg-slate-100 text-slate-700 px-2.5 py-1">
-                            <span className="h-2 w-2 rounded-full bg-slate-400" />
-                            Base Resume
-                          </span>
-                          <span className="inline-flex items-center gap-2 rounded-full bg-emerald-100 text-emerald-700 px-2.5 py-1">
-                            <span className="h-2 w-2 rounded-full bg-emerald-500" />
-                            Tailored Resume
-                          </span>
-                          <span className="inline-flex items-center gap-2 rounded-full bg-accent-primary/10 text-accent-primary px-2.5 py-1">
-                            <span className="h-2 w-2 rounded-full bg-accent-primary" />
-                            Added skill
-                          </span>
-                          <span className="inline-flex items-center gap-2 rounded-full bg-amber-50 text-amber-700 px-2.5 py-1">
-                            <span className="h-2 w-2 rounded-full bg-amber-500" />
-                            Needs input
-                          </span>
-                        </div>
-                        <div className="grid grid-cols-2 gap-4">
-                          <div className="rounded-lg bg-slate-50 border border-slate-200 p-4">
-                            <div className="flex items-center gap-2">
-                              <span className="h-2.5 w-2.5 rounded-full bg-slate-400" />
-                              <p className="text-xs uppercase tracking-[0.2em] text-slate-600">Base Resume</p>
-                            </div>
-                            <div className="mt-4">{renderResumeView(baseResumeView)}</div>
-                          </div>
-                          <div className="rounded-lg bg-emerald-50 border border-emerald-200 p-4">
-                            <div className="flex items-center gap-2">
-                              <span className="h-2.5 w-2.5 rounded-full bg-emerald-500" />
-                              <p className="text-xs uppercase tracking-[0.2em] text-emerald-700">Tailored Resume</p>
-                            </div>
-                            <div className="mt-4">
-                              {renderResumeView(tailoredResumeView, {
-                                highlightAdded: true,
-                                addedSkills: tailoredResumeView?.addedSkills
-                              })}
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-                    ) : (
-                      <div className="rounded-lg bg-white border border-border p-4">
-                        {renderResumeView(tailoredResumeView, {
-                          highlightAdded: true,
-                          addedSkills: tailoredResumeView?.addedSkills
-                        })}
-                      </div>
-                    )}
+                    <div className="rounded-lg bg-white border border-border p-4">
+                      {renderResumeView(tailoredResumeView, {
+                        highlightAdded: true,
+                        addedSkills: tailoredResumeView?.addedSkills
+                      })}
+                    </div>
                   </div>
                 </div>
               )}

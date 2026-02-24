@@ -149,6 +149,7 @@ const CalendarPage = () => {
   const roleScope = Array.isArray(user?.roles) ? user.roles : undefined;
   const roles = roleScope || [];
   const isAdmin = roles.includes("admin") || roles.includes("manager");
+  const assignedOnlyMode = !isAdmin;
   const profilesRoute = getProfilesRouteByRoles(roles);
   const calendarEndpointPath = getCalendarEndpointPathByRoles(roles);
   const calendarEndpoint = API_BASE ? `${API_BASE}${calendarEndpointPath}` : calendarEndpointPath;
@@ -235,7 +236,7 @@ const CalendarPage = () => {
   }, [calendarEndpoint]);
 
   const loadEvents = useCallback(async (accountId, signal) => {
-    if (!accountId) {
+    if (!accountId && !assignedOnlyMode) {
       setEvents([]);
       return;
     }
@@ -252,8 +253,18 @@ const CalendarPage = () => {
     try {
       setEventsLoading(true);
       setEventsError(null);
+      const query = new URLSearchParams({
+        start: viewStart.toISOString(),
+        end: viewEnd.toISOString()
+      });
+      if (accountId) {
+        query.set("account_id", accountId);
+      }
+      if (assignedOnlyMode) {
+        query.set("assigned_only", "1");
+      }
       const res = await fetch(
-        `${calendarEndpoint}/events?account_id=${encodeURIComponent(accountId)}&start=${encodeURIComponent(viewStart.toISOString())}&end=${encodeURIComponent(viewEnd.toISOString())}`,
+        `${calendarEndpoint}/events?${query.toString()}`,
         {
           signal,
           headers: {
@@ -279,7 +290,7 @@ const CalendarPage = () => {
     } finally {
       setEventsLoading(false);
     }
-  }, [calendarEndpoint, viewEnd, viewStart]);
+  }, [assignedOnlyMode, calendarEndpoint, viewEnd, viewStart]);
 
   const loadCallers = useCallback(async () => {
     try {
@@ -340,14 +351,18 @@ const CalendarPage = () => {
   }, [accounts, activeAccountId]);
 
   useEffect(() => {
+    const controller = new AbortController();
+    if (assignedOnlyMode) {
+      loadEvents(null, controller.signal);
+      return () => controller.abort();
+    }
     if (!activeAccountId) {
       setEvents([]);
-      return;
+      return () => controller.abort();
     }
-    const controller = new AbortController();
     loadEvents(activeAccountId, controller.signal);
     return () => controller.abort();
-  }, [activeAccountId, loadEvents]);
+  }, [activeAccountId, assignedOnlyMode, loadEvents]);
 
   useEffect(() => {
     if (!callerModalOpen) return;
@@ -360,7 +375,9 @@ const CalendarPage = () => {
         .filter(Boolean)
         .join(" · ")
     : "";
-  const visibleEvents = events.filter((event) => event.accountId === activeAccount?.id);
+  const visibleEvents = assignedOnlyMode
+    ? events
+    : events.filter((event) => event.accountId === activeAccount?.id);
 
   const eventsByDay = useMemo(() => {
     const map = new Map();

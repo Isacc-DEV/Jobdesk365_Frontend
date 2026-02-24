@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Eye, FileCode, Pencil, Plus, Save, Trash2, X } from "lucide-react";
 import { API_BASE, TOKEN_KEY } from "../../config";
 import { useUser } from "../../hooks/useUser";
+import { renderResumeTemplate as renderResumeTemplateShared } from "../../lib/resumeTemplateRenderer";
 
 type ResumeTemplate = {
   id: string;
@@ -540,7 +541,7 @@ const ResumeTemplatesPage = () => {
   const previewDoc = useMemo(() => {
     const html = mode === "view" ? selectedTemplate?.code || "" : draft.code;
     if (!html.trim()) return EMPTY_PREVIEW_HTML;
-    const rendered = renderResumeTemplate(html, getMockResumeData());
+      const rendered = renderResumeTemplateShared(html, getMockResumeData());
     return wrapHtmlIfNeeded(rendered);
   }, [mode, selectedTemplate, draft.code]);
 
@@ -613,7 +614,7 @@ const ResumeTemplatesPage = () => {
       setError("Template HTML is empty.");
       return;
     }
-    const rendered = renderResumeTemplate(html, getMockResumeData());
+    const rendered = renderResumeTemplateShared(html, getMockResumeData());
     const doc = wrapHtmlIfNeeded(rendered);
     const popup = window.open("", "_blank", "noopener,noreferrer");
     if (!popup) {
