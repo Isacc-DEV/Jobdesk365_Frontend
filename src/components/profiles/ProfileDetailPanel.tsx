@@ -4,6 +4,10 @@ import { X } from "lucide-react";
 import ProfileDetailProfileTab from "./ProfileDetailProfileTab";
 import ProfileDetailBaseInfoTab from "./ProfileDetailBaseInfoTab";
 import ProfileDetailBaseResumeTab from "./ProfileDetailBaseResumeTab";
+import {
+  normalizeResumeDateInput,
+  normalizeResumeExperienceDates
+} from "../../lib/resumeDate";
 
 const tabs = [
   { id: "profile", label: "Profile" },
@@ -76,8 +80,11 @@ const buildBaseInfoForm = (profile) => {
 };
 
 const normalizeExperience = (exp) => {
-  const endDate = exp?.end_date || exp?.endDate || "";
-  const isPresent = exp?.isPresent || String(endDate).toLowerCase() === "present";
+  const startRaw = exp?.startDate || exp?.start_date || "";
+  const endRaw = exp?.end_date || exp?.endDate || "";
+  const isPresent = exp?.isPresent || String(endRaw).toLowerCase() === "present";
+  const normalizedStart = normalizeResumeDateInput(startRaw, { allowPresent: false });
+  const normalizedEnd = normalizeResumeDateInput(isPresent ? "Present" : endRaw, { allowPresent: true });
   const bulletsValue = exp?.bullets ?? exp?.bullet_points ?? exp?.bulletPoints ?? "";
   const bullets = Array.isArray(bulletsValue)
     ? bulletsValue.filter(Boolean).join("\n")
@@ -88,11 +95,36 @@ const normalizeExperience = (exp) => {
     roleTitle: exp?.roleTitle || exp?.role_title || "",
     employmentType: exp?.employmentType || exp?.employment_type || "",
     location: exp?.location || exp?.location_text || exp?.locationText || "",
-    startDate: exp?.startDate || exp?.start_date || "",
-    endDate: isPresent ? "Present" : endDate,
-    isPresent,
+    startDate: normalizedStart.isValid ? normalizedStart.value : startRaw,
+    endDate: normalizedEnd.isValid ? normalizedEnd.value : (isPresent ? "Present" : endRaw),
+    isPresent: normalizedEnd.isValid ? normalizedEnd.value === "Present" : isPresent,
     bullets
   };
+};
+
+const dateErrorKey = (id, field) => `${id}:${field}`;
+
+const normalizeResumeExperienceForForm = (experienceItems) => {
+  const normalized = normalizeResumeExperienceDates(experienceItems);
+  const items = Array.isArray(normalized.items)
+    ? normalized.items.map((item, index) => {
+        if (!item || typeof item !== "object") return item;
+        const entry = item as any;
+        return {
+          ...entry,
+          id: entry.id || experienceItems?.[index]?.id || `exp-${Date.now()}-${index}`
+        };
+      })
+    : [];
+  const errors: Record<string, string> = {};
+
+  normalized.issues.forEach((issue) => {
+    const item = items?.[issue.index];
+    if (!item || !item.id) return;
+    errors[dateErrorKey(item.id, issue.field)] = issue.message;
+  });
+
+  return { items, errors, issues: normalized.issues };
 };
 
 const buildResumeForm = (profile) => {
@@ -135,7 +167,9 @@ const buildResumeForm = (profile) => {
 const buildResumeExport = (form) => {
   const skills = Array.isArray(form.skills) ? form.skills.filter(Boolean) : [];
   const experienceItems = Array.isArray(form.experience) ? form.experience : [];
-  const workExperience = experienceItems.map((exp) => {
+  const normalizedExperience = normalizeResumeExperienceDates(experienceItems);
+  const workExperience = normalizedExperience.items.map((rawExp) => {
+    const exp = rawExp as any;
     const bullets = typeof exp.bullets === "string"
       ? exp.bullets
           .split("\n")
@@ -235,12 +269,16 @@ const ProfileDetailPanel = ({
   const [profileForm, setProfileForm] = useState(() => buildProfileForm(profile));
   const [baseInfoForm, setBaseInfoForm] = useState(() => buildBaseInfoForm(profile));
   const [resumeForm, setResumeForm] = useState(() => buildResumeForm(profile));
+  const [resumeDateErrors, setResumeDateErrors] = useState<Record<string, string>>({});
   const [skillsInput, setSkillsInput] = useState("");
 
   useEffect(() => {
     setProfileForm(buildProfileForm(profile));
     setBaseInfoForm(buildBaseInfoForm(profile));
-    setResumeForm(buildResumeForm(profile));
+    const nextResumeForm = buildResumeForm(profile);
+    const normalized = normalizeResumeExperienceForForm(nextResumeForm.experience);
+    setResumeForm({ ...nextResumeForm, experience: normalized.items });
+    setResumeDateErrors(normalized.errors);
     setDirtyTabs({ profile: false, baseInfo: false, baseResume: false });
     setActiveTab("profile");
     setSkillsInput("");
@@ -265,6 +303,16 @@ const ProfileDetailPanel = ({
     markDirty("baseResume");
   };
 
+  const clearDateError = (id, field) => {
+    const key = dateErrorKey(id, field);
+    setResumeDateErrors((prev) => {
+      if (!prev[key]) return prev;
+      const next = { ...prev };
+      delete next[key];
+      return next;
+    });
+  };
+
   const updateExperience = (id, key, value) => {
     setResumeForm((prev) => ({
       ...prev,
@@ -272,18 +320,51 @@ const ProfileDetailPanel = ({
         item.id === id ? { ...item, [key]: value } : item
       )
     }));
+    if (key === "startDate" || key === "endDate") {
+      clearDateError(id, key);
+    }
+    if (key === "isPresent" && value) {
+      clearDateError(id, "endDate");
+    }
     markDirty("baseResume");
   };
 
+  const handleExperienceDateBlur = (id, field) => {
+    const selected = resumeForm.experience.find((item) => item.id === id);
+    if (!selected) return;
+    if (field === "endDate" && selected.isPresent) {
+      updateExperience(id, "endDate", "Present");
+      clearDateError(id, "endDate");
+      return;
+    }
+    const normalized = normalizeResumeDateInput(selected[field], {
+      allowPresent: field === "endDate"
+    });
+    if (!normalized.isValid) {
+      setResumeDateErrors((prev) => ({
+        ...prev,
+        [dateErrorKey(id, field)]: normalized.error || "Invalid date format."
+      }));
+      return;
+    }
+    if (field === "endDate") {
+      const isPresent = normalized.value === "Present";
+      updateExperience(id, "isPresent", isPresent);
+    }
+    updateExperience(id, field, normalized.value);
+    clearDateError(id, field);
+  };
+
   const addExperience = () => {
+    const newItem = normalizeExperience({
+      id: `exp-${Date.now()}-${Math.random().toString(16).slice(2)}`,
+      isPresent: false
+    });
     setResumeForm((prev) => ({
       ...prev,
       experience: [
         ...prev.experience,
-        normalizeExperience({
-          id: `exp-${Date.now()}-${Math.random().toString(16).slice(2)}`,
-          isPresent: false
-        })
+        newItem
       ]
     }));
     markDirty("baseResume");
@@ -294,6 +375,12 @@ const ProfileDetailPanel = ({
       ...prev,
       experience: prev.experience.filter((item) => item.id !== id)
     }));
+    setResumeDateErrors((prev) => {
+      const next = { ...prev };
+      delete next[dateErrorKey(id, "startDate")];
+      delete next[dateErrorKey(id, "endDate")];
+      return next;
+    });
     markDirty("baseResume");
   };
 
@@ -336,7 +423,14 @@ const ProfileDetailPanel = ({
       } else if (activeTab === "baseInfo") {
         await onSaveBaseInfo?.(baseInfoForm);
       } else if (activeTab === "baseResume") {
-        await onSaveBaseResume?.(resumeForm);
+        const normalized = normalizeResumeExperienceForForm(resumeForm.experience);
+        setResumeDateErrors(normalized.errors);
+        if (normalized.issues.length > 0) {
+          return;
+        }
+        const payload = { ...resumeForm, experience: normalized.items };
+        setResumeForm(payload);
+        await onSaveBaseResume?.(payload);
       }
       setDirtyTabs((prev) => ({ ...prev, [activeTab]: false }));
     } finally {
@@ -378,8 +472,10 @@ const ProfileDetailPanel = ({
   };
 
   const handleImportBaseResume = (data) => {
-    const normalized = buildResumeForm({ raw: { base_resume: data, baseResume: data } });
-    setResumeForm(normalized);
+    const normalizedForm = buildResumeForm({ raw: { base_resume: data, baseResume: data } });
+    const normalized = normalizeResumeExperienceForForm(normalizedForm.experience);
+    setResumeForm({ ...normalizedForm, experience: normalized.items });
+    setResumeDateErrors(normalized.errors);
     setSkillsInput("");
     markDirty("baseResume");
   };
@@ -478,6 +574,8 @@ const ProfileDetailPanel = ({
                   addExperience={addExperience}
                   removeExperience={removeExperience}
                   updateExperience={updateExperience}
+                  onExperienceDateBlur={handleExperienceDateBlur}
+                  resumeDateErrors={resumeDateErrors}
                   updateResumeForm={updateResumeForm}
                   onImportJson={handleImportBaseResume}
                   onExportJson={handleExportBaseResume}

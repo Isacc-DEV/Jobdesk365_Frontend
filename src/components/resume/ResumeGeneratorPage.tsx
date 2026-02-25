@@ -15,6 +15,11 @@ import { API_BASE, AI_SERVICE_URL, TOKEN_KEY } from "../../config";
 import { useUser } from "../../hooks/useUser";
 import { renderResumeTemplate } from "../../lib/resumeTemplateRenderer";
 import {
+  formatResumeDateRange,
+  normalizeResumeExperienceDates,
+  normalizeResumeWorkExperienceDates
+} from "../../lib/resumeDate";
+import {
   getProfilesEndpointPathByRoles,
   getProfilesRouteByRoles
 } from "../../lib/profilesAccess";
@@ -80,7 +85,7 @@ const injectScript = (html: string, scriptTag: string) => {
 };
 
 const normalizeBaseResumeForTemplate = (rawResume: any) => {
-  const resume = rawResume || {};
+  const resume = normalizeResumeWorkExperienceDates(rawResume || {}) || {};
   const profileBlock = resume.Profile || resume.profile || {};
   const contactBlock = profileBlock.contact || resume.contact || {};
   const summaryValue = resume.summary?.text || resume.summary?.summary || resume.summary || "";
@@ -99,17 +104,16 @@ const normalizeBaseResumeForTemplate = (rawResume: any) => {
   const experienceSource =
     resume.workExperience || resume.work_experience || resume.workExperience || resume.experience || [];
   const experienceItems = Array.isArray(experienceSource) ? experienceSource : [];
-  const workExperience = experienceItems.map((exp: any) => {
+  const normalizedExperience = normalizeResumeExperienceDates(experienceItems);
+  const workExperience = normalizedExperience.items.map((exp: any) => {
     const bullets = normalizeBullets(exp?.bullets ?? exp?.bullet_points ?? exp?.bulletPoints ?? exp?.bullet ?? "");
-    const endDateValue = exp?.end_date || exp?.endDate || "";
-    const isPresent = exp?.isPresent || String(endDateValue).toLowerCase() === "present";
     return {
       companyTitle: exp?.companyTitle || exp?.company_name || exp?.companyName || "",
       roleTitle: exp?.roleTitle || exp?.role_title || "",
       employmentType: exp?.employmentType || exp?.employment_type || "",
       location: exp?.location || exp?.location_text || exp?.locationText || "",
       startDate: exp?.startDate || exp?.start_date || "",
-      endDate: isPresent ? "Present" : endDateValue || "",
+      endDate: exp?.isPresent ? "Present" : exp?.endDate || exp?.end_date || "",
       bullets: bullets.length ? bullets : []
     };
   });
@@ -264,11 +268,9 @@ const normalizeBullets = (value: any): string[] => {
 };
 
 const normalizeExperience = (exp: any): ResumeViewExperience => {
-  const endDateValue = exp?.end_date || exp?.endDate || "";
-  const isPresent = exp?.isPresent || String(endDateValue).toLowerCase() === "present";
-  const startDate = exp?.startDate || exp?.start_date || "";
-  const endDate = isPresent ? "Present" : endDateValue;
-  const dates = [startDate, endDate].filter(Boolean).join(" - ");
+  const normalized = normalizeResumeExperienceDates([exp]);
+  const first = (normalized.items?.[0] as any) || exp || {};
+  const dates = formatResumeDateRange(first?.startDate || first?.start_date, first?.endDate || first?.end_date);
   const bullets = normalizeBullets(exp?.bullets ?? exp?.bullet_points ?? exp?.bulletPoints ?? exp?.bullet ?? "").map(
     (text) => ({ text, needsInput: false, changeType: "none" as const })
   );
@@ -283,7 +285,7 @@ const normalizeExperience = (exp: any): ResumeViewExperience => {
 
 const buildBaseResumeView = (profile: any): ResumeView => {
   const raw = profile?.raw || {};
-  const resume = raw.base_resume ?? raw.baseResume ?? {};
+  const resume = normalizeResumeWorkExperienceDates(raw.base_resume ?? raw.baseResume ?? {}) ?? {};
   const profileBlock = resume.Profile || resume.profile || {};
   const summaryValue = resume.summary?.text || resume.summary?.summary || resume.summary || "";
   const summaryLines = Array.isArray(summaryValue)

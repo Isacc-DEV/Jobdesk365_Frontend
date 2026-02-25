@@ -1,3 +1,5 @@
+import { normalizeResumeDateInput, normalizeResumeWorkExperienceDates } from "./resumeDate";
+
 export type TemplateResume = {
   Profile?: {
     name?: string;
@@ -50,6 +52,12 @@ const cleanString = (value: unknown): string => {
     .trim();
 };
 
+const normalizeDateForTemplate = (value: unknown, allowPresent: boolean) => {
+  const normalized = normalizeResumeDateInput(value, { allowPresent });
+  if (normalized.isValid) return normalized.value;
+  return cleanString(value);
+};
+
 const buildWorkExperienceHtml = (items?: TemplateResume["workExperience"]) => {
   const list = items ?? [];
   if (!list.length) return "";
@@ -59,10 +67,9 @@ const buildWorkExperienceHtml = (items?: TemplateResume["workExperience"]) => {
         .map(cleanString)
         .filter(Boolean)
         .join(" - ");
-      const dates = [item.startDate, item.endDate]
-        .map(cleanString)
-        .filter(Boolean)
-        .join(" - ");
+      const startDate = normalizeDateForTemplate(item.startDate, false);
+      const endDate = normalizeDateForTemplate(item.endDate, true);
+      const dates = [startDate, endDate].filter(Boolean).join(" - ");
       const meta = [item.location, item.employmentType]
         .map(cleanString)
         .filter(Boolean)
@@ -100,10 +107,16 @@ const buildEducationHtml = (items?: TemplateResume["education"]) => {
 };
 
 export const buildTemplateData = (resume: TemplateResume) => {
-  const profile = resume.Profile ?? {};
+  const normalizedResume = (normalizeResumeWorkExperienceDates(resume) as TemplateResume) ?? resume;
+  const profile = normalizedResume.Profile ?? {};
   const contact = profile.contact ?? {};
-  const summary = resume.summary ?? {};
-  const skills = resume.skills ?? {};
+  const summary = normalizedResume.summary ?? {};
+  const skills = normalizedResume.skills ?? {};
+  const normalizedWorkExperience =
+    normalizedResume.workExperience ??
+    (normalizedResume as any).work_experience ??
+    (normalizedResume as any).experience ??
+    [];
 
   return {
     profile: {
@@ -128,9 +141,9 @@ export const buildTemplateData = (resume: TemplateResume) => {
     },
     summary: { text: summary.text || "" },
     skills: { raw: skills.raw ?? [] },
-    workExperience: resume.workExperience ?? [],
-    work_experience: resume.workExperience ?? [],
-    education: resume.education ?? []
+    workExperience: normalizedWorkExperience,
+    work_experience: normalizedWorkExperience,
+    education: normalizedResume.education ?? []
   };
 };
 

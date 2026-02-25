@@ -3,6 +3,7 @@ import { Eye, FileCode, Pencil, Plus, Save, Trash2, X } from "lucide-react";
 import { API_BASE, TOKEN_KEY } from "../../config";
 import { useUser } from "../../hooks/useUser";
 import { renderResumeTemplate as renderResumeTemplateShared } from "../../lib/resumeTemplateRenderer";
+import { normalizeResumeDateInput } from "../../lib/resumeDate";
 
 type ResumeTemplate = {
   id: string;
@@ -147,6 +148,12 @@ const cleanString = (value: unknown): string => {
   return String(value).trim();
 };
 
+const normalizeDateForPreview = (value: unknown, allowPresent: boolean) => {
+  const normalized = normalizeResumeDateInput(value, { allowPresent });
+  if (normalized.isValid) return normalized.value;
+  return cleanString(value);
+};
+
 const buildWorkExperienceHtml = (items?: BaseResume["workExperience"]) => {
   const list = items ?? [];
   if (!list.length) return "";
@@ -156,8 +163,10 @@ const buildWorkExperienceHtml = (items?: BaseResume["workExperience"]) => {
         .map(cleanString)
         .filter(Boolean)
         .join(" - ");
-      const dates = [item.startDate, item.endDate]
-        .map(cleanString)
+      const dates = [
+        normalizeDateForPreview(item.startDate, false),
+        normalizeDateForPreview(item.endDate, true)
+      ]
         .filter(Boolean)
         .join(" - ");
       const meta = [item.location, item.employmentType]
@@ -251,7 +260,7 @@ const getMockResumeData = (): BaseResume => ({
       roleTitle: "Senior Software Engineer",
       employmentType: "Full-time",
       location: "Remote",
-      startDate: "2021",
+      startDate: "01/21",
       endDate: "Present",
       bullets: [
         "Built scalable API platform with 99.9% uptime.",
@@ -263,8 +272,8 @@ const getMockResumeData = (): BaseResume => ({
       roleTitle: "Software Engineer",
       employmentType: "Full-time",
       location: "Austin, TX",
-      startDate: "2018",
-      endDate: "2021",
+      startDate: "01/18",
+      endDate: "12/20",
       bullets: ["Shipped customer-facing features in React + Node."]
     }
   ],

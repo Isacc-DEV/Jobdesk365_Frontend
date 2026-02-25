@@ -1,5 +1,6 @@
 import { useRef, useState } from "react";
 import { Eye } from "lucide-react";
+import { formatResumeDateRange } from "../../lib/resumeDate";
 
 const ProfileDetailBaseResumeTab = ({
   visible,
@@ -11,6 +12,8 @@ const ProfileDetailBaseResumeTab = ({
   addExperience,
   removeExperience,
   updateExperience,
+  onExperienceDateBlur,
+  resumeDateErrors,
   updateResumeForm,
   onImportJson,
   onExportJson
@@ -55,8 +58,7 @@ const ProfileDetailBaseResumeTab = ({
     const experience = experienceItems.length
       ? experienceItems
           .map((exp) => {
-            const endLabel = exp?.isPresent ? "Present" : exp?.endDate || "";
-            const range = [exp?.startDate, endLabel].filter(Boolean).join(" - ");
+            const range = formatResumeDateRange(exp?.startDate, exp?.isPresent ? "Present" : exp?.endDate);
             const bullets = exp?.bullets
               ? `<p class="muted">${escapeHtml(exp.bullets).replace(/\n/g, "<br />")}</p>`
               : "";
@@ -135,6 +137,7 @@ const ProfileDetailBaseResumeTab = ({
 
   const skills = Array.isArray(resumeForm.skills) ? resumeForm.skills : [];
   const experienceItems = Array.isArray(resumeForm.experience) ? resumeForm.experience : [];
+  const getDateError = (id, field) => resumeDateErrors?.[`${id}:${field}`] || "";
 
   return (
     <section className="space-y-6" style={{ display: visible ? "block" : "none" }}>
@@ -333,19 +336,35 @@ const ProfileDetailBaseResumeTab = ({
                   <option value="Freelance">Freelance</option>
                   <option value="Internship">Internship</option>
                 </select>
-                <input
-                  type="date"
-                  className="w-full rounded-lg border border-border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent-primary/40"
-                  value={exp.startDate}
-                  onChange={(event) => updateExperience(exp.id, "startDate", event.target.value)}
-                />
-                <input
-                  type="date"
-                  className="w-full rounded-lg border border-border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent-primary/40"
-                  value={exp.isPresent ? "" : exp.endDate}
-                  onChange={(event) => updateExperience(exp.id, "endDate", event.target.value)}
-                  disabled={exp.isPresent}
-                />
+                <div className="space-y-1">
+                  <input
+                    type="text"
+                    inputMode="numeric"
+                    placeholder="Start Date (MM/YY)"
+                    className="w-full rounded-lg border border-border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent-primary/40"
+                    value={exp.startDate}
+                    onChange={(event) => updateExperience(exp.id, "startDate", event.target.value)}
+                    onBlur={() => onExperienceDateBlur?.(exp.id, "startDate")}
+                  />
+                  {getDateError(exp.id, "startDate") ? (
+                    <div className="text-xs text-red-600">{getDateError(exp.id, "startDate")}</div>
+                  ) : null}
+                </div>
+                <div className="space-y-1">
+                  <input
+                    type="text"
+                    inputMode="numeric"
+                    placeholder="End Date (MM/YY or Present)"
+                    className="w-full rounded-lg border border-border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent-primary/40 disabled:bg-gray-50 disabled:text-ink-muted"
+                    value={exp.isPresent ? "Present" : exp.endDate}
+                    onChange={(event) => updateExperience(exp.id, "endDate", event.target.value)}
+                    onBlur={() => onExperienceDateBlur?.(exp.id, "endDate")}
+                    disabled={exp.isPresent}
+                  />
+                  {getDateError(exp.id, "endDate") ? (
+                    <div className="text-xs text-red-600">{getDateError(exp.id, "endDate")}</div>
+                  ) : null}
+                </div>
                 <label className="flex items-center gap-2 text-sm text-ink">
                   <input
                     type="checkbox"
