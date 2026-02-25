@@ -102,6 +102,21 @@ const normalizeExperience = (exp) => {
   };
 };
 
+const normalizeEducation = (entry) => {
+  const courseworkValue = entry?.coursework ?? entry?.courses ?? "";
+  const coursework = Array.isArray(courseworkValue)
+    ? courseworkValue.filter(Boolean).join("\n")
+    : courseworkValue || "";
+  return {
+    id: entry?.id || `edu-${Date.now()}-${Math.random().toString(16).slice(2)}`,
+    institution: entry?.institution || entry?.school || "",
+    degree: entry?.degree || "",
+    field: entry?.field || entry?.major || "",
+    date: entry?.date || entry?.graduationDate || "",
+    coursework
+  };
+};
+
 const dateErrorKey = (id, field) => `${id}:${field}`;
 
 const normalizeResumeExperienceForForm = (experienceItems) => {
@@ -150,7 +165,9 @@ const buildResumeForm = (profile) => {
     : [];
   const experienceSource =
     resume.workExperience || resume.work_experience || resume.workExperience || resume.experience || [];
+  const educationSource = resume.education || resume.educationHistory || [];
   const experienceItems = Array.isArray(experienceSource) ? experienceSource : [];
+  const educationItems = Array.isArray(educationSource) ? educationSource : [];
   return {
     name: profileBlock.name || resume.name || resume.full_name || resume.fullName || "",
     location: contactBlock.location || resume.location || resume.location_text || resume.locationText || "",
@@ -160,13 +177,15 @@ const buildResumeForm = (profile) => {
     headline: profileBlock.headline || resume.headline || "",
     summary: summaryValue,
     skills,
-    experience: experienceItems.map(normalizeExperience)
+    experience: experienceItems.map(normalizeExperience),
+    education: educationItems.map(normalizeEducation)
   };
 };
 
 const buildResumeExport = (form) => {
   const skills = Array.isArray(form.skills) ? form.skills.filter(Boolean) : [];
   const experienceItems = Array.isArray(form.experience) ? form.experience : [];
+  const educationItems = Array.isArray(form.education) ? form.education : [];
   const normalizedExperience = normalizeResumeExperienceDates(experienceItems);
   const workExperience = normalizedExperience.items.map((rawExp) => {
     const exp = rawExp as any;
@@ -186,6 +205,24 @@ const buildResumeExport = (form) => {
       startDate: exp.startDate || "",
       endDate: exp.isPresent ? "Present" : exp.endDate || "",
       bullets: bullets.length ? bullets : [""]
+    };
+  });
+  const education = educationItems.map((rawEdu) => {
+    const edu = rawEdu as any;
+    const coursework = typeof edu.coursework === "string"
+      ? edu.coursework
+          .split("\n")
+          .map((value) => value.trim())
+          .filter((value) => value.length > 0)
+      : Array.isArray(edu.coursework)
+      ? edu.coursework.filter(Boolean)
+      : [];
+    return {
+      institution: edu.institution || "",
+      degree: edu.degree || "",
+      field: edu.field || "",
+      date: edu.date || "",
+      coursework: coursework.length ? coursework : [""]
     };
   });
 
@@ -212,7 +249,7 @@ const buildResumeExport = (form) => {
         bullets: [""]
       }
     ],
-    education: [
+    education: education.length ? education : [
       {
         institution: "",
         degree: "",
@@ -381,6 +418,35 @@ const ProfileDetailPanel = ({
       delete next[dateErrorKey(id, "endDate")];
       return next;
     });
+    markDirty("baseResume");
+  };
+
+  const addEducation = () => {
+    const newItem = normalizeEducation({
+      id: `edu-${Date.now()}-${Math.random().toString(16).slice(2)}`
+    });
+    setResumeForm((prev) => ({
+      ...prev,
+      education: [...(Array.isArray(prev.education) ? prev.education : []), newItem]
+    }));
+    markDirty("baseResume");
+  };
+
+  const updateEducation = (id, key, value) => {
+    setResumeForm((prev) => ({
+      ...prev,
+      education: (Array.isArray(prev.education) ? prev.education : []).map((item) =>
+        item.id === id ? { ...item, [key]: value } : item
+      )
+    }));
+    markDirty("baseResume");
+  };
+
+  const removeEducation = (id) => {
+    setResumeForm((prev) => ({
+      ...prev,
+      education: (Array.isArray(prev.education) ? prev.education : []).filter((item) => item.id !== id)
+    }));
     markDirty("baseResume");
   };
 
@@ -574,6 +640,9 @@ const ProfileDetailPanel = ({
                   addExperience={addExperience}
                   removeExperience={removeExperience}
                   updateExperience={updateExperience}
+                  addEducation={addEducation}
+                  removeEducation={removeEducation}
+                  updateEducation={updateEducation}
                   onExperienceDateBlur={handleExperienceDateBlur}
                   resumeDateErrors={resumeDateErrors}
                   updateResumeForm={updateResumeForm}

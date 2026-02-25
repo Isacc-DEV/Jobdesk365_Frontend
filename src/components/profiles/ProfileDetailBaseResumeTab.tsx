@@ -12,6 +12,9 @@ const ProfileDetailBaseResumeTab = ({
   addExperience,
   removeExperience,
   updateExperience,
+  addEducation,
+  removeEducation,
+  updateEducation,
   onExperienceDateBlur,
   resumeDateErrors,
   updateResumeForm,
@@ -55,6 +58,7 @@ const ProfileDetailBaseResumeTab = ({
       : "";
 
     const experienceItems = Array.isArray(resumeForm.experience) ? resumeForm.experience : [];
+    const educationItems = Array.isArray(resumeForm.education) ? resumeForm.education : [];
     const experience = experienceItems.length
       ? experienceItems
           .map((exp) => {
@@ -73,6 +77,25 @@ const ProfileDetailBaseResumeTab = ({
           })
           .join("")
       : `<p class="muted">No experience added yet.</p>`;
+
+    const education = educationItems.length
+      ? educationItems
+          .map((edu) => {
+            const label = [edu?.degree, edu?.field].filter(Boolean).join(", ");
+            const title = label ? `${label} | ${edu?.institution || ""}` : edu?.institution || "Education";
+            const coursework = edu?.coursework
+              ? `<p class="muted">${escapeHtml(edu.coursework).replace(/\n/g, "<br />")}</p>`
+              : "";
+            return `
+              <div class="card">
+                <div class="title">${escapeHtml(title)}</div>
+                ${edu?.date ? `<div class="muted">${escapeHtml(edu.date)}</div>` : ""}
+                ${coursework}
+              </div>
+            `;
+          })
+          .join("")
+      : `<p class="muted">No education added yet.</p>`;
 
     const name = escapeHtml(resumeForm.name || "Resume Preview");
 
@@ -106,6 +129,8 @@ const ProfileDetailBaseResumeTab = ({
         ${skills ? `<div class="chips">${skills}</div>` : `<p class="muted">No skills added yet.</p>`}
         <h2>Experience</h2>
         ${experience}
+        <h2>Education</h2>
+        ${education}
       </div>
     </div>
   </body>
@@ -137,6 +162,7 @@ const ProfileDetailBaseResumeTab = ({
 
   const skills = Array.isArray(resumeForm.skills) ? resumeForm.skills : [];
   const experienceItems = Array.isArray(resumeForm.experience) ? resumeForm.experience : [];
+  const educationItems = Array.isArray(resumeForm.education) ? resumeForm.education : [];
   const getDateError = (id, field) => resumeDateErrors?.[`${id}:${field}`] || "";
 
   return (
@@ -384,6 +410,77 @@ const ProfileDetailBaseResumeTab = ({
                 className="w-full rounded-lg border border-border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent-primary/40"
                 value={exp.bullets}
                 onChange={(event) => updateExperience(exp.id, "bullets", event.target.value)}
+              />
+            </div>
+          ))}
+        </div>
+      </div>
+
+      <div className="space-y-4">
+        <div className="flex items-center justify-between">
+          <h3 className="text-xs font-semibold uppercase tracking-[0.18em] text-ink-muted">Education</h3>
+          <button
+            type="button"
+            onClick={addEducation}
+            className="text-sm font-semibold text-accent-primary hover:underline"
+          >
+            Add Education
+          </button>
+        </div>
+        <div className="space-y-4">
+          {educationItems.length === 0 ? (
+            <div className="rounded-xl border border-dashed border-border px-4 py-6 text-sm text-ink-muted">
+              No education added yet.
+            </div>
+          ) : null}
+          {educationItems.map((edu) => (
+            <div key={edu.id} className="rounded-xl border border-border p-4 space-y-3">
+              <div className="flex items-center justify-between">
+                <h4 className="text-sm font-semibold text-ink">Education</h4>
+                <button
+                  type="button"
+                  onClick={() => removeEducation(edu.id)}
+                  className="text-xs font-semibold text-red-600 hover:text-red-700"
+                >
+                  Remove Education
+                </button>
+              </div>
+              <div className="grid grid-cols-1 gap-3">
+                <input
+                  type="text"
+                  placeholder="Institution"
+                  className="w-full rounded-lg border border-border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent-primary/40"
+                  value={edu.institution}
+                  onChange={(event) => updateEducation(edu.id, "institution", event.target.value)}
+                />
+                <input
+                  type="text"
+                  placeholder="Degree"
+                  className="w-full rounded-lg border border-border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent-primary/40"
+                  value={edu.degree}
+                  onChange={(event) => updateEducation(edu.id, "degree", event.target.value)}
+                />
+                <input
+                  type="text"
+                  placeholder="Field of Study"
+                  className="w-full rounded-lg border border-border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent-primary/40"
+                  value={edu.field}
+                  onChange={(event) => updateEducation(edu.id, "field", event.target.value)}
+                />
+                <input
+                  type="text"
+                  placeholder="Date"
+                  className="w-full rounded-lg border border-border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent-primary/40"
+                  value={edu.date}
+                  onChange={(event) => updateEducation(edu.id, "date", event.target.value)}
+                />
+              </div>
+              <textarea
+                rows={3}
+                placeholder="Coursework (one per line)"
+                className="w-full rounded-lg border border-border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent-primary/40"
+                value={edu.coursework}
+                onChange={(event) => updateEducation(edu.id, "coursework", event.target.value)}
               />
             </div>
           ))}
