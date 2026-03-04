@@ -87,22 +87,30 @@ const DEFAULT_TEMPLATE_HTML = `<!doctype html>
       {{profile.contact.email}} | {{profile.contact.phone}} | {{profile.contact.linkedin}}
     </div>
   </header>
+  {{#hasSummary}}
   <section class="section">
     <h2>Summary</h2>
-    <p>{{summary}}</p>
+    <p>{{summary.text}}</p>
   </section>
+  {{/hasSummary}}
+  {{#hasWorkExperience}}
   <section class="section">
     <h2>Experience</h2>
     {{work_experience}}
   </section>
+  {{/hasWorkExperience}}
+  {{#hasEducation}}
   <section class="section">
     <h2>Education</h2>
     {{education}}
   </section>
+  {{/hasEducation}}
+  {{#hasSkills}}
   <section class="section">
     <h2>Skills</h2>
-    <p>{{skills}}</p>
+    <p>{{skills.raw}}</p>
   </section>
+  {{/hasSkills}}
 </body>
 </html>`;
 
@@ -266,7 +274,7 @@ const getMockResumeData = (): BaseResume => ({
       roleTitle: "Senior Software Engineer",
       employmentType: "Full-time",
       location: "Remote",
-      startDate: "01/21",
+      startDate: "01/2021",
       endDate: "Present",
       bullets: [
         "Built scalable API platform with 99.9% uptime.",
@@ -278,8 +286,8 @@ const getMockResumeData = (): BaseResume => ({
       roleTitle: "Software Engineer",
       employmentType: "Full-time",
       location: "Austin, TX",
-      startDate: "01/18",
-      endDate: "12/20",
+      startDate: "01/2018",
+      endDate: "12/2020",
       bullets: ["Shipped customer-facing features in React + Node."]
     }
   ],
@@ -288,7 +296,7 @@ const getMockResumeData = (): BaseResume => ({
       institution: "State University",
       degree: "BSc Computer Science",
       field: "Computer Science",
-      date: "2018"
+      date: "05/2018"
     }
   ],
   skills: { raw: ["TypeScript", "React", "Node.js", "PostgreSQL", "AWS"] }

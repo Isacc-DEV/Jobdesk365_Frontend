@@ -28,9 +28,11 @@ const apiFetch = async (path: string, options: RequestInit = {}) => {
 };
 
 export const adminService = {
-  async listUsers(query?: string) {
+  async listUsers(options?: { q?: string; scope?: "external" | "internal"; excludeSelf?: boolean }) {
     const params = new URLSearchParams();
-    if (query) params.set("q", query);
+    if (options?.q) params.set("q", options.q);
+    if (options?.scope) params.set("scope", options.scope);
+    if (options?.excludeSelf) params.set("exclude_self", "true");
     const qs = params.toString();
     const data = await apiFetch(`/users${qs ? `?${qs}` : ""}`, { method: "GET" });
     return Array.isArray(data?.items) ? data.items : [];
@@ -46,9 +48,33 @@ export const adminService = {
     });
   },
 
+  async updateUserBadge(
+    userId: string,
+    payload: { badge: string; action: "add" | "remove" }
+  ) {
+    return apiFetch(`/users/${userId}/badges`, {
+      method: "POST",
+      body: JSON.stringify(payload)
+    });
+  },
+
   async deleteUser(userId: string) {
     return apiFetch(`/users/${userId}`, {
       method: "DELETE"
+    });
+  },
+
+  async setUserBlocked(userId: string, blocked: boolean) {
+    return apiFetch(`/users/${userId}/block`, {
+      method: "PATCH",
+      body: JSON.stringify({ blocked })
+    });
+  },
+
+  async setUserVerified(userId: string, verified: boolean) {
+    return apiFetch(`/users/${userId}/verify`, {
+      method: "PATCH",
+      body: JSON.stringify({ verified })
     });
   }
 };

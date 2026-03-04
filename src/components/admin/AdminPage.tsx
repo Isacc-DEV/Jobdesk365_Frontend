@@ -1,114 +1,173 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { RefreshCw, Trash2, UserCheck, UserCog } from "lucide-react";
+import { Ban, RefreshCw, ShieldCheck, ShieldX, Trash2, UserCog } from "lucide-react";
 import { useUser } from "../../hooks/useUser";
 import { adminService } from "../../services/adminService";
 
-const formatUsernameLabel = (user) =>
-  user?.username || user?.user_name || user?.email || user?.id || "Unknown";
+type UserRow = {
+  id: string;
+  email?: string;
+  username?: string;
+  display_name?: string;
+  roles?: string[];
+  badges?: string[];
+  verified?: boolean;
+  blocked_at?: string | null;
+  is_blocked?: boolean;
+};
 
-const formatNameLabel = (user) =>
-  user?.display_name || user?.displayName || user?.name || "-";
+type UserTab = "external" | "internal";
+const BADGE_KEYS = ["manager", "bidder", "caller"];
 
-const formatRoleLabel = (role) => {
-  const normalized = String(role || "").toLowerCase();
+const formatUsernameLabel = (user: UserRow) =>
+  user?.username || user?.email || user?.id || "Unknown";
+
+const formatNameLabel = (user: UserRow) =>
+  user?.display_name || "-";
+
+const formatBadgeLabel = (badge: string) => {
+  const normalized = String(badge || "").toLowerCase();
   if (!normalized) return "";
-  if (normalized === "worker") return "Employee";
   return normalized.charAt(0).toUpperCase() + normalized.slice(1);
 };
 
-const getUserBadges = (user) => {
-  const rawBadges = [
-    ...(Array.isArray(user?.roles) ? user.roles : []),
-    ...(Array.isArray(user?.talents) ? user.talents : [])
-  ];
-  const seen = new Set();
-  return rawBadges
-    .map((badge) => String(badge || "").trim())
-    .filter((badge) => {
-      const key = badge.toLowerCase();
-      if (!key || seen.has(key)) return false;
-      seen.add(key);
-      return true;
-    });
+const hasBadge = (user: UserRow, badge: string): boolean => {
+  const list = Array.isArray(user?.badges) ? user.badges : [];
+  return list.some((item) => String(item || "").toLowerCase() === badge.toLowerCase());
 };
+
+const isBlockedUser = (user: UserRow): boolean => Boolean(user?.is_blocked || user?.blocked_at);
+const isNotVerifiedUser = (user: UserRow): boolean => !Boolean(user?.verified);
 
 const AdminPage = () => {
   const { user, loading: userLoading } = useUser();
   const roles = Array.isArray(user?.roles) ? user.roles : [];
   const isAdmin = roles.includes("admin");
 
-  const [users, setUsers] = useState([]);
+  const [activeTab, setActiveTab] = useState<UserTab>("external");
+  const [users, setUsers] = useState<UserRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [query, setQuery] = useState("");
-  const [updatingId, setUpdatingId] = useState("");
-  const [deletingId, setDeletingId] = useState("");
+  const [busyUserId, setBusyUserId] = useState("");
 
   const loadUsers = useCallback(
-    async (search = "") => {
+    async (nextQuery = query, nextTab = activeTab) => {
       if (!isAdmin) return;
       try {
         setLoading(true);
         setError("");
-        const items = await adminService.listUsers(search.trim() || "");
+        const items = await adminService.listUsers({
+          q: nextQuery.trim(),
+          scope: nextTab,
+          excludeSelf: nextTab === "internal"
+        });
         setUsers(items);
-      } catch (err) {
+      } catch (err: any) {
         setError(err?.message || "Unable to load users.");
       } finally {
         setLoading(false);
       }
     },
-    [isAdmin]
+    [activeTab, isAdmin, query]
   );
 
   useEffect(() => {
     if (isAdmin) {
-      loadUsers("");
+      void loadUsers("", activeTab);
     }
-  }, [isAdmin, loadUsers]);
+  }, [activeTab, isAdmin, loadUsers]);
 
-  const handleApproveManager = async (target) => {
+  const handleDeleteUser = async (target: UserRow) => {
     if (!target?.id) return;
-    const targetRoles = Array.isArray(target.roles) ? target.roles : [];
-    if (targetRoles.includes("manager")) return;
+    const ok = window.confirm(`Delete user "${formatUsernameLabel(target)}"?`);
+    if (!ok) return;
     try {
-      setUpdatingId(target.id);
-      setError("");
-      const data = await adminService.updateUserRole(target.id, {
-        role: "manager",
-        action: "add"
-      });
-      const nextRoles = Array.isArray(data?.roles) ? data.roles : [...targetRoles, "manager"];
-      setUsers((prev) =>
-        prev.map((item) => (item.id === target.id ? { ...item, roles: nextRoles } : item))
-      );
-    } catch (err) {
-      setError(err?.message || "Unable to update role.");
-    } finally {
-      setUpdatingId("");
-    }
-  };
-
-  const handleDeleteUser = async (target) => {
-    if (!target?.id) return;
-    try {
-      setDeletingId(target.id);
+      setBusyUserId(target.id);
       setError("");
       await adminService.deleteUser(target.id);
       setUsers((prev) => prev.filter((item) => item.id !== target.id));
-    } catch (err) {
+    } catch (err: any) {
       setError(err?.message || "Unable to delete user.");
     } finally {
-      setDeletingId("");
+      setBusyUserId("");
     }
   };
 
-  const tableRows = useMemo(() => users || [], [users]);
+  const handleToggleBlock = async (target: UserRow) => {
+    if (!target?.id) return;
+    const nextBlocked = !isBlockedUser(target);
+    try {
+      setBusyUserId(target.id);
+      setError("");
+      const data = await adminService.setUserBlocked(target.id, nextBlocked);
+      setUsers((prev) =>
+        prev.map((item) =>
+          item.id === target.id
+            ? {
+                ...item,
+                blocked_at: data?.blocked_at || null,
+                is_blocked: Boolean(data?.is_blocked)
+              }
+            : item
+        )
+      );
+    } catch (err: any) {
+      setError(err?.message || "Unable to update blocked status.");
+    } finally {
+      setBusyUserId("");
+    }
+  };
+
+  const handleToggleBadge = async (target: UserRow, badge: string) => {
+    if (!target?.id) return;
+    const currentlyAssigned = hasBadge(target, badge);
+    try {
+      setBusyUserId(`${target.id}:${badge}`);
+      setError("");
+      const data = await adminService.updateUserBadge(target.id, {
+        badge,
+        action: currentlyAssigned ? "remove" : "add"
+      });
+      const nextBadges = Array.isArray(data?.badges) ? data.badges : [];
+      setUsers((prev) =>
+        prev.map((item) => (item.id === target.id ? { ...item, badges: nextBadges } : item))
+      );
+    } catch (err: any) {
+      setError(err?.message || "Unable to update badge.");
+    } finally {
+      setBusyUserId("");
+    }
+  };
+
+  const handleVerifyUser = async (target: UserRow) => {
+    if (!target?.id) return;
+    try {
+      setBusyUserId(target.id);
+      setError("");
+      const data = await adminService.setUserVerified(target.id, true);
+      setUsers((prev) =>
+        prev.map((item) =>
+          item.id === target.id
+            ? {
+                ...item,
+                verified: Boolean(data?.verified)
+              }
+            : item
+        )
+      );
+    } catch (err: any) {
+      setError(err?.message || "Unable to verify user.");
+    } finally {
+      setBusyUserId("");
+    }
+  };
+
+  const rows = useMemo(() => users || [], [users]);
 
   if (userLoading) {
     return (
       <main className="min-h-[calc(100vh-64px)] border-t border-border px-6 py-6">
-        <div className="mx-auto max-w-[1440px] text-sm text-ink-muted">Loading admin panel...</div>
+        <div className="mx-auto max-w-[1440px] text-sm text-ink-muted">Loading users page...</div>
       </main>
     );
   }
@@ -128,12 +187,14 @@ const AdminPage = () => {
       <div className="mx-auto flex max-w-[1440px] flex-col gap-6">
         <header className="flex items-start justify-between gap-4">
           <div>
-            <h1 className="text-2xl font-semibold text-ink">Admin</h1>
-            <p className="text-sm text-ink-muted">Review users, roles, and talent badges.</p>
+            <h1 className="text-2xl font-semibold text-ink">Users</h1>
+            <p className="text-sm text-ink-muted">Manage normal users and internal users.</p>
           </div>
           <button
             type="button"
-            onClick={() => loadUsers()}
+            onClick={() => {
+              void loadUsers(query, activeTab);
+            }}
             className="flex items-center gap-2 rounded-lg border border-border px-3 py-2 text-sm font-semibold text-ink-muted hover:text-ink"
           >
             <RefreshCw size={16} />
@@ -143,9 +204,25 @@ const AdminPage = () => {
 
         <div className="rounded-2xl border border-border bg-white p-4">
           <div className="flex flex-wrap items-center gap-3">
-            <div className="flex items-center gap-2 text-sm font-semibold text-ink">
-              <UserCog size={16} />
-              Users
+            <div className="inline-flex rounded-lg border border-border p-1">
+              <button
+                type="button"
+                onClick={() => setActiveTab("external")}
+                className={`rounded-md px-3 py-1.5 text-sm font-semibold ${
+                  activeTab === "external" ? "bg-accent-primary text-white" : "text-ink-muted"
+                }`}
+              >
+                Normal Users
+              </button>
+              <button
+                type="button"
+                onClick={() => setActiveTab("internal")}
+                className={`rounded-md px-3 py-1.5 text-sm font-semibold ${
+                  activeTab === "internal" ? "bg-accent-primary text-white" : "text-ink-muted"
+                }`}
+              >
+                Internal Users
+              </button>
             </div>
             <div className="flex-1 min-w-[240px]">
               <input
@@ -157,7 +234,9 @@ const AdminPage = () => {
             </div>
             <button
               type="button"
-              onClick={() => loadUsers(query)}
+              onClick={() => {
+                void loadUsers(query, activeTab);
+              }}
               className="rounded-lg bg-accent-primary px-4 py-2 text-sm font-semibold text-white"
             >
               Search
@@ -175,7 +254,7 @@ const AdminPage = () => {
           <div className="rounded-2xl border border-border bg-white p-6 text-sm text-ink-muted">
             Loading users...
           </div>
-        ) : tableRows.length === 0 ? (
+        ) : rows.length === 0 ? (
           <div className="rounded-2xl border border-border bg-white p-6 text-sm text-ink-muted">
             No users found.
           </div>
@@ -184,60 +263,101 @@ const AdminPage = () => {
             <table className="w-full text-left text-sm">
               <thead className="bg-gray-50 text-xs uppercase tracking-wide text-ink-muted">
                 <tr>
-                  <th className="px-4 py-3">User name</th>
+                  <th className="px-4 py-3">Username</th>
                   <th className="px-4 py-3">Name</th>
                   <th className="px-4 py-3">Email</th>
-                  <th className="px-4 py-3">Badges</th>
+                  <th className="px-4 py-3">Status</th>
+                  {activeTab === "internal" ? <th className="px-4 py-3">Badges</th> : null}
                   <th className="px-4 py-3 text-right">Actions</th>
                 </tr>
               </thead>
               <tbody>
-                {tableRows.map((row) => {
-                  const rowRoles = Array.isArray(row.roles) ? row.roles : [];
-                  const isManager = rowRoles.includes("manager");
-                  const isUpdating = updatingId === row.id;
-                  const isDeleting = deletingId === row.id;
-                  const badges = getUserBadges(row);
+                {rows.map((row) => {
+                  const blocked = isBlockedUser(row);
+                  const notVerified = isNotVerifiedUser(row);
+                  const isBusy = busyUserId === row.id;
                   return (
                     <tr key={row.id} className="border-t border-border">
                       <td className="px-4 py-3 font-medium text-ink">{formatUsernameLabel(row)}</td>
                       <td className="px-4 py-3 text-ink">{formatNameLabel(row)}</td>
                       <td className="px-4 py-3 text-ink-muted">{row.email || "-"}</td>
                       <td className="px-4 py-3">
-                        <div className="flex flex-wrap gap-2">
-                          {badges.length === 0 ? (
-                            <span className="text-xs text-ink-muted">None</span>
-                          ) : (
-                            badges.map((badge) => (
-                              <span
-                                key={`${row.id}-${badge}`}
-                                className="rounded-full bg-gray-100 px-2 py-0.5 text-xs font-semibold text-ink"
-                              >
-                                {formatRoleLabel(badge)}
-                              </span>
-                            ))
-                          )}
-                        </div>
+                        <span
+                          className={`rounded-full px-2 py-0.5 text-xs font-semibold ${
+                            blocked
+                              ? "bg-red-100 text-red-700"
+                              : notVerified
+                                ? "bg-amber-100 text-amber-700"
+                                : "bg-emerald-100 text-emerald-700"
+                          }`}
+                        >
+                          {blocked ? "Blocked" : notVerified ? "Not verified" : "Active"}
+                        </span>
                       </td>
+                      {activeTab === "internal" ? (
+                        <td className="px-4 py-3">
+                          <div className="flex flex-wrap gap-2">
+                            {BADGE_KEYS.map((badge) => {
+                              const assigned = hasBadge(row, badge);
+                              const badgeBusy = busyUserId === `${row.id}:${badge}`;
+                              return (
+                                <button
+                                  key={`${row.id}-${badge}`}
+                                  type="button"
+                                  onClick={() => {
+                                    void handleToggleBadge(row, badge);
+                                  }}
+                                  disabled={badgeBusy}
+                                  className={`rounded-full border px-2 py-1 text-xs font-semibold ${
+                                    assigned
+                                      ? "border-accent-primary bg-accent-primary/10 text-accent-primary"
+                                      : "border-border text-ink-muted"
+                                  }`}
+                                >
+                                  {formatBadgeLabel(badge)}
+                                </button>
+                              );
+                            })}
+                          </div>
+                        </td>
+                      ) : null}
                       <td className="px-4 py-3 text-right">
                         <div className="flex items-center justify-end gap-2">
                           <button
                             type="button"
-                            onClick={() => handleApproveManager(row)}
-                            disabled={isManager || isUpdating || isDeleting}
-                            aria-label="Approve manager"
-                            title={isManager ? "Manager approved" : "Approve manager"}
-                            className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-border text-ink-muted hover:text-ink hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-60"
+                            onClick={() => {
+                              if (blocked) {
+                                void handleToggleBlock(row);
+                                return;
+                              }
+                              if (notVerified) {
+                                void handleVerifyUser(row);
+                                return;
+                              }
+                              void handleToggleBlock(row);
+                            }}
+                            disabled={isBusy}
+                            aria-label={blocked ? "Unblock user" : notVerified ? "Verify user" : "Block user"}
+                            title={blocked ? "Unblock user" : notVerified ? "Verify user" : "Block user"}
+                            className={`inline-flex h-9 w-9 items-center justify-center rounded-lg border border-border ${
+                              blocked
+                                ? "text-emerald-600 hover:bg-emerald-50"
+                                : notVerified
+                                  ? "text-emerald-600 hover:bg-emerald-50"
+                                  : "text-amber-600 hover:bg-amber-50"
+                            } disabled:cursor-not-allowed disabled:opacity-60`}
                           >
-                            <UserCheck size={16} />
+                            {blocked ? <ShieldCheck size={16} /> : notVerified ? <ShieldCheck size={16} /> : <ShieldX size={16} />}
                           </button>
                           <button
                             type="button"
-                            onClick={() => handleDeleteUser(row)}
-                            disabled={isUpdating || isDeleting}
+                            onClick={() => {
+                              void handleDeleteUser(row);
+                            }}
+                            disabled={isBusy}
                             aria-label="Delete user"
                             title="Delete user"
-                            className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-border text-ink-muted hover:text-red-600 hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-60"
+                            className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-border text-ink-muted hover:bg-red-50 hover:text-red-600 disabled:cursor-not-allowed disabled:opacity-60"
                           >
                             <Trash2 size={16} />
                           </button>
@@ -250,6 +370,21 @@ const AdminPage = () => {
             </table>
           </div>
         )}
+
+        <div className="rounded-2xl border border-border bg-white p-4 text-xs text-ink-muted">
+          <div className="flex items-center gap-2">
+            <Ban size={14} />
+            <span>
+              Internal users tab excludes your own admin account.
+            </span>
+          </div>
+          <div className="mt-1 flex items-center gap-2">
+            <UserCog size={14} />
+            <span>
+              Internal badges available: Manager, Bidder, Caller.
+            </span>
+          </div>
+        </div>
       </div>
     </main>
   );

@@ -36,6 +36,10 @@ const AdminRoutes = ({ route, userLoading, navigate }: AdminRoutesProps) => {
   const canonicalSectionPath = getCanonicalSectionPath(route, "admin");
 
   useEffect(() => {
+    if (!userLoading && route === "/admin") {
+      navigate("/admin/users");
+      return;
+    }
     if (userLoading || !canonicalSectionPath) return;
     if (route.startsWith(canonicalSectionPath)) return;
     navigate(canonicalSectionPath);
@@ -61,6 +65,7 @@ const AdminRoutes = ({ route, userLoading, navigate }: AdminRoutesProps) => {
   if (route.startsWith("/resume-templates")) return <AdminResumeTemplatesPage />;
   if (isTalentsRoute(route)) return <AdminTalentsPage />;
   if (route.startsWith("/chat")) return <AdminChatPage />;
+  if (route.startsWith("/admin/users")) return <AdminAdminPage />;
   if (isAdminRoute(route)) return <AdminAdminPage />;
   if (route === "/dashboard") return <AdminDashboardPage />;
 
@@ -68,4 +73,3 @@ const AdminRoutes = ({ route, userLoading, navigate }: AdminRoutesProps) => {
 };
 
 export default AdminRoutes;
-

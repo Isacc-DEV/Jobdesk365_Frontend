@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
-import { X } from "lucide-react";
+import { Loader2, Save, X } from "lucide-react";
 import ProfileDetailProfileTab from "./ProfileDetailProfileTab";
 import ProfileDetailBaseInfoTab from "./ProfileDetailBaseInfoTab";
 import ProfileDetailBaseResumeTab from "./ProfileDetailBaseResumeTab";
@@ -107,12 +107,14 @@ const normalizeEducation = (entry) => {
   const coursework = Array.isArray(courseworkValue)
     ? courseworkValue.filter(Boolean).join("\n")
     : courseworkValue || "";
+  const dateRaw = entry?.date || entry?.graduationDate || "";
+  const normalizedDate = normalizeResumeDateInput(dateRaw, { allowPresent: false });
   return {
     id: entry?.id || `edu-${Date.now()}-${Math.random().toString(16).slice(2)}`,
     institution: entry?.institution || entry?.school || "",
     degree: entry?.degree || "",
     field: entry?.field || entry?.major || "",
-    date: entry?.date || entry?.graduationDate || "",
+    date: normalizedDate.isValid ? normalizedDate.value : dateRaw,
     coursework
   };
 };
@@ -140,6 +142,56 @@ const normalizeResumeExperienceForForm = (experienceItems) => {
   });
 
   return { items, errors, issues: normalized.issues };
+};
+
+const normalizeResumeEducationForForm = (educationItems) => {
+  const items = Array.isArray(educationItems)
+    ? educationItems.map((item, index) => {
+        const entry = item && typeof item === "object" ? item : {};
+        return {
+          ...entry,
+          id: entry.id || `edu-${Date.now()}-${index}`,
+          date: entry.date || ""
+        };
+      })
+    : [];
+  const errors: Record<string, string> = {};
+  const issues: Array<{ index: number; field: "date"; value: string; message: string }> = [];
+
+  items.forEach((item, index) => {
+    const rawDate = item?.date || "";
+    const normalizedDate = normalizeResumeDateInput(rawDate, { allowPresent: false });
+    if (!normalizedDate.isValid) {
+      errors[dateErrorKey(item.id, "date")] = normalizedDate.error || "Invalid date format.";
+      issues.push({
+        index,
+        field: "date",
+        value: normalizedDate.value,
+        message: normalizedDate.error || "Invalid date."
+      });
+      return;
+    }
+    item.date = normalizedDate.value;
+  });
+
+  return { items, errors, issues };
+};
+
+const normalizeResumeFormForEditor = (form) => {
+  const normalizedExperience = normalizeResumeExperienceForForm(form?.experience);
+  const normalizedEducation = normalizeResumeEducationForForm(form?.education);
+  return {
+    form: {
+      ...form,
+      experience: normalizedExperience.items,
+      education: normalizedEducation.items
+    },
+    errors: {
+      ...normalizedExperience.errors,
+      ...normalizedEducation.errors
+    },
+    issues: [...normalizedExperience.issues, ...normalizedEducation.issues]
+  };
 };
 
 const buildResumeForm = (profile) => {
@@ -183,12 +235,19 @@ const buildResumeForm = (profile) => {
 };
 
 const buildResumeExport = (form) => {
-  const skills = Array.isArray(form.skills) ? form.skills.filter(Boolean) : [];
+  const skills = Array.isArray(form.skills)
+    ? form.skills
+        .map((skill) => String(skill || "").trim())
+        .filter(Boolean)
+    : [];
   const experienceItems = Array.isArray(form.experience) ? form.experience : [];
   const educationItems = Array.isArray(form.education) ? form.education : [];
   const normalizedExperience = normalizeResumeExperienceDates(experienceItems);
-  const workExperience = normalizedExperience.items.map((rawExp) => {
+  const workExperience = normalizedExperience.items
+    .map((rawExp) => {
     const exp = rawExp as any;
+    const companyTitle = (exp.companyName || "").trim();
+    if (!companyTitle) return null;
     const bullets = typeof exp.bullets === "string"
       ? exp.bullets
           .split("\n")
@@ -197,18 +256,25 @@ const buildResumeExport = (form) => {
       : Array.isArray(exp.bullets)
       ? exp.bullets.filter(Boolean)
       : [];
-    return {
-      companyTitle: exp.companyName || "",
+    const item: any = {
+      companyTitle,
       roleTitle: exp.roleTitle || "",
       employmentType: exp.employmentType || "",
       location: exp.location || "",
       startDate: exp.startDate || "",
-      endDate: exp.isPresent ? "Present" : exp.endDate || "",
-      bullets: bullets.length ? bullets : [""]
+      endDate: exp.isPresent ? "Present" : exp.endDate || ""
     };
-  });
-  const education = educationItems.map((rawEdu) => {
+    if (bullets.length) {
+      item.bullets = bullets;
+    }
+    return item;
+  })
+    .filter(Boolean);
+  const education = educationItems
+    .map((rawEdu) => {
     const edu = rawEdu as any;
+    const dateNormalized = normalizeResumeDateInput(edu.date || "", { allowPresent: false });
+    const date = dateNormalized.isValid ? dateNormalized.value : (edu.date || "");
     const coursework = typeof edu.coursework === "string"
       ? edu.coursework
           .split("\n")
@@ -217,14 +283,25 @@ const buildResumeExport = (form) => {
       : Array.isArray(edu.coursework)
       ? edu.coursework.filter(Boolean)
       : [];
-    return {
-      institution: edu.institution || "",
-      degree: edu.degree || "",
-      field: edu.field || "",
-      date: edu.date || "",
-      coursework: coursework.length ? coursework : [""]
+    const institution = (edu.institution || "").trim();
+    const degree = (edu.degree || "").trim();
+    const field = (edu.field || "").trim();
+    const dateValue = String(date || "").trim();
+    if (!institution && !degree && !field && !dateValue && coursework.length === 0) {
+      return null;
+    }
+    const item: any = {
+      institution,
+      degree,
+      field,
+      date: dateValue
     };
-  });
+    if (coursework.length) {
+      item.coursework = coursework;
+    }
+    return item;
+  })
+    .filter(Boolean);
 
   return {
     Profile: {
@@ -238,27 +315,9 @@ const buildResumeExport = (form) => {
       }
     },
     summary: { text: form.summary || "" },
-    workExperience: workExperience.length ? workExperience : [
-      {
-        companyTitle: "",
-        roleTitle: "",
-        employmentType: "",
-        location: "",
-        startDate: "",
-        endDate: "",
-        bullets: [""]
-      }
-    ],
-    education: education.length ? education : [
-      {
-        institution: "",
-        degree: "",
-        field: "",
-        date: "",
-        coursework: [""]
-      }
-    ],
-    skills: { raw: skills.length ? skills : [""] }
+    workExperience,
+    education,
+    skills: { raw: skills }
   };
 };
 
@@ -283,7 +342,11 @@ type ProfileDetailPanelProps = {
   onSaveBaseInfo?: (payload: any) => Promise<void> | void;
   onSaveBaseResume?: (payload: any) => Promise<void> | void;
   onConnectEmail?: (profileId: string) => Promise<void> | void;
+  onDisconnectEmail?: (profileId: string) => Promise<void> | void;
+  onChangeEmail?: (profileId: string) => Promise<void> | void;
   emailConnecting?: boolean;
+  emailDisconnecting?: boolean;
+  emailChanging?: boolean;
 };
 
 const ProfileDetailPanel = ({
@@ -294,7 +357,11 @@ const ProfileDetailPanel = ({
   onSaveBaseInfo,
   onSaveBaseResume,
   onConnectEmail,
-  emailConnecting = false
+  onDisconnectEmail,
+  onChangeEmail,
+  emailConnecting = false,
+  emailDisconnecting = false,
+  emailChanging = false
 }: ProfileDetailPanelProps) => {
   const [activeTab, setActiveTab] = useState("profile");
   const [dirtyTabs, setDirtyTabs] = useState({
@@ -313,8 +380,8 @@ const ProfileDetailPanel = ({
     setProfileForm(buildProfileForm(profile));
     setBaseInfoForm(buildBaseInfoForm(profile));
     const nextResumeForm = buildResumeForm(profile);
-    const normalized = normalizeResumeExperienceForForm(nextResumeForm.experience);
-    setResumeForm({ ...nextResumeForm, experience: normalized.items });
+    const normalized = normalizeResumeFormForEditor(nextResumeForm);
+    setResumeForm(normalized.form);
     setResumeDateErrors(normalized.errors);
     setDirtyTabs({ profile: false, baseInfo: false, baseResume: false });
     setActiveTab("profile");
@@ -439,6 +506,9 @@ const ProfileDetailPanel = ({
         item.id === id ? { ...item, [key]: value } : item
       )
     }));
+    if (key === "date") {
+      clearDateError(id, "date");
+    }
     markDirty("baseResume");
   };
 
@@ -447,7 +517,27 @@ const ProfileDetailPanel = ({
       ...prev,
       education: (Array.isArray(prev.education) ? prev.education : []).filter((item) => item.id !== id)
     }));
+    setResumeDateErrors((prev) => {
+      const next = { ...prev };
+      delete next[dateErrorKey(id, "date")];
+      return next;
+    });
     markDirty("baseResume");
+  };
+
+  const handleEducationDateBlur = (id) => {
+    const selected = resumeForm.education.find((item) => item.id === id);
+    if (!selected) return;
+    const normalized = normalizeResumeDateInput(selected.date, { allowPresent: false });
+    if (!normalized.isValid) {
+      setResumeDateErrors((prev) => ({
+        ...prev,
+        [dateErrorKey(id, "date")]: normalized.error || "Invalid date format."
+      }));
+      return;
+    }
+    updateEducation(id, "date", normalized.value);
+    clearDateError(id, "date");
   };
 
   const addSkill = (value) => {
@@ -489,13 +579,13 @@ const ProfileDetailPanel = ({
       } else if (activeTab === "baseInfo") {
         await onSaveBaseInfo?.(baseInfoForm);
       } else if (activeTab === "baseResume") {
-        const normalized = normalizeResumeExperienceForForm(resumeForm.experience);
+        const normalized = normalizeResumeFormForEditor(resumeForm);
+        setResumeForm(normalized.form);
         setResumeDateErrors(normalized.errors);
         if (normalized.issues.length > 0) {
           return;
         }
-        const payload = { ...resumeForm, experience: normalized.items };
-        setResumeForm(payload);
+        const payload = buildResumeExport(normalized.form);
         await onSaveBaseResume?.(payload);
       }
       setDirtyTabs((prev) => ({ ...prev, [activeTab]: false }));
@@ -505,12 +595,12 @@ const ProfileDetailPanel = ({
   };
 
   const emailStatusLabel = profileForm.emailStatus === "connected" ? "Connected" : "Not Connected";
-  const emailActionLabel =
+  const connectActionLabel =
     profileForm.emailStatus === "expired"
       ? "Reconnect"
       : profileForm.emailStatus === "not_connected"
       ? "Connect"
-      : null;
+      : "Connect";
   const assignedBidderLabel =
     profile?.assignedBidderLabel ||
     formatPersonLabel({
@@ -527,6 +617,18 @@ const ProfileDetailPanel = ({
     }
   };
 
+  const handleDisconnectEmail = () => {
+    if (profile?.id) {
+      onDisconnectEmail?.(profile.id);
+    }
+  };
+
+  const handleChangeEmail = () => {
+    if (profile?.id) {
+      onChangeEmail?.(profile.id);
+    }
+  };
+
   const handleImportBaseInfo = (data) => {
     const normalized = buildBaseInfoForm({ raw: { base_info: data, baseInfo: data } });
     setBaseInfoForm(normalized);
@@ -539,8 +641,8 @@ const ProfileDetailPanel = ({
 
   const handleImportBaseResume = (data) => {
     const normalizedForm = buildResumeForm({ raw: { base_resume: data, baseResume: data } });
-    const normalized = normalizeResumeExperienceForForm(normalizedForm.experience);
-    setResumeForm({ ...normalizedForm, experience: normalized.items });
+    const normalized = normalizeResumeFormForEditor(normalizedForm);
+    setResumeForm(normalized.form);
     setResumeDateErrors(normalized.errors);
     setSkillsInput("");
     markDirty("baseResume");
@@ -572,9 +674,15 @@ const ProfileDetailPanel = ({
                       type="button"
                       onClick={handleSave}
                       disabled={!dirtyTabs[activeTab] || Boolean(savingTab)}
-                      className="px-3 py-1.5 rounded-lg bg-accent-primary text-white text-sm font-semibold disabled:opacity-60 disabled:cursor-not-allowed"
+                      aria-label={savingTab === activeTab ? "Saving" : "Save changes"}
+                      title={savingTab === activeTab ? "Saving..." : "Save changes"}
+                      className="inline-flex h-9 w-9 items-center justify-center rounded-lg text-accent-primary disabled:opacity-60 disabled:cursor-not-allowed"
                     >
-                      {savingTab === activeTab ? "Saving..." : "Save"}
+                      {savingTab === activeTab ? (
+                        <Loader2 size={16} className="animate-spin" />
+                      ) : (
+                        <Save size={16} />
+                      )}
                     </button>
                     <button
                       type="button"
@@ -619,9 +727,13 @@ const ProfileDetailPanel = ({
                 updateProfileForm={updateProfileForm}
                 assignedBidderLabel={assignedBidderLabel}
                 emailStatusLabel={emailStatusLabel}
-                emailActionLabel={emailActionLabel}
+                connectActionLabel={connectActionLabel}
                 onConnectEmail={handleConnectEmail}
+                onDisconnectEmail={handleDisconnectEmail}
+                onChangeEmail={handleChangeEmail}
                 emailConnecting={emailConnecting}
+                emailDisconnecting={emailDisconnecting}
+                emailChanging={emailChanging}
               />
                 <ProfileDetailBaseInfoTab
                   visible={activeTab === "baseInfo"}
@@ -646,6 +758,7 @@ const ProfileDetailPanel = ({
                   removeEducation={removeEducation}
                   updateEducation={updateEducation}
                   onExperienceDateBlur={handleExperienceDateBlur}
+                  onEducationDateBlur={handleEducationDateBlur}
                   resumeDateErrors={resumeDateErrors}
                   updateResumeForm={updateResumeForm}
                   onImportJson={handleImportBaseResume}

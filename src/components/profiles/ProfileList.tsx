@@ -1,9 +1,7 @@
 ﻿import ProfileRow from "./ProfileRow";
 
-const getGridTemplate = (showOwner) =>
-  showOwner
-    ? "minmax(0, 1.5fr) minmax(0, 1fr) minmax(0, 1.5fr) minmax(0, 1.1fr) minmax(0, 1fr) minmax(0, 0.9fr) minmax(0, 1.05fr) minmax(0, 0.85fr)"
-    : "minmax(0, 1.5fr) minmax(0, 1.5fr) minmax(0, 1.1fr) minmax(0, 1fr) minmax(0, 0.9fr) minmax(0, 1.05fr) minmax(0, 0.85fr)";
+const getGridTemplate = () =>
+  "minmax(0, 1.7fr) minmax(0, 1fr) minmax(0, 1.6fr) minmax(0, 1.2fr) minmax(0, 1.1fr) minmax(0, 0.85fr)";
 
 const ProfileList = ({
   profiles,
@@ -12,16 +10,19 @@ const ProfileList = ({
   onTemplateClick,
   onEmailOpen,
   onOpen,
+  onPreview,
   onDelete,
   onBidderRequest,
   onTemplatesOpen,
   allowBidderAssign,
-  showOwner
+  allowEditAny,
+  allowDeleteAny,
+  allowDeleteOwn
 }) => {
   if (loading) {
     return (
       <div className="border border-border rounded-2xl bg-white p-6 text-sm text-ink-muted">
-        Loading profiles…
+        Loading profiles...
       </div>
     );
   }
@@ -44,16 +45,14 @@ const ProfileList = ({
 
   const headerCells = [
     { label: "Profile", align: "text-left" },
-    ...(showOwner ? [{ label: "Username", align: "text-left" }] : []),
+    { label: "Profile Owner", align: "text-left" },
     { label: "Email", align: "text-left" },
     { label: "Template", align: "text-left" },
     { label: "Bidder", align: "text-left" },
-    { label: "Inbox", align: "text-left" },
-    { label: "Next Interview", align: "text-left" },
     { label: "Actions", align: "text-right" }
   ];
 
-  const gridTemplate = getGridTemplate(showOwner);
+  const gridTemplate = getGridTemplate();
 
   return (
     <div className="border border-border rounded-2xl overflow-hidden bg-white">
@@ -78,13 +77,16 @@ const ProfileList = ({
             key={profile.id}
             profile={profile}
             onOpen={() => onOpen?.(profile)}
+            onPreview={() => onPreview?.(profile)}
             onTemplateClick={(anchor) => onTemplateClick?.(profile, anchor)}
             onEmailOpen={() => onEmailOpen?.(profile)}
             onDelete={() => onDelete?.(profile)}
             onBidderRequest={() => onBidderRequest?.(profile)}
             onTemplatesOpen={onTemplatesOpen}
             allowBidderAssign={allowBidderAssign}
-            showOwner={showOwner}
+            allowEditAny={allowEditAny}
+            allowDeleteAny={allowDeleteAny}
+            allowDeleteOwn={allowDeleteOwn}
             gridTemplate={gridTemplate}
           />
         ))}

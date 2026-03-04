@@ -4,6 +4,8 @@ import { API_BASE, TOKEN_KEY } from "../config";
 
 export const useUser = (options = {}) => {
   const { enabled = true, redirectOnUnauthorized = true } = options;
+  const workerBlockMessage = "plz contact to support team and get verified as internal worker";
+  const accountBlockedMessage = "Your account is blocked. Please contact support team.";
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -33,12 +35,34 @@ export const useUser = (options = {}) => {
           return;
         }
         if (!res.ok) {
-          throw new Error((await res.text()) || "Unable to load profile.");
+          let message = "Unable to load profile.";
+          try {
+            const data = await res.json();
+            if (data?.error === "worker_not_verified") {
+              message = workerBlockMessage;
+            } else if (data?.error === "account_blocked") {
+              message = accountBlockedMessage;
+            } else {
+              message = data?.message || data?.error || message;
+            }
+          } catch {
+            message = (await res.text()) || message;
+          }
+          throw new Error(message);
         }
         const data = await res.json();
         const parsedUser = data?.user ?? data;
-        setUser(parsedUser);
+        const roles = Array.isArray(parsedUser?.roles) ? parsedUser.roles : [];
+        const badges = Array.isArray(parsedUser?.badges) ? parsedUser.badges : [];
+        const hasManagerBadge =
+          roles.includes("worker") && badges.some((badge) => String(badge || "").toLowerCase() === "manager");
+        const nextUser =
+          hasManagerBadge && !roles.includes("manager")
+            ? { ...parsedUser, roles: [...roles, "manager"] }
+            : parsedUser;
+        setUser(nextUser);
       } catch (err) {
+        setUser(null);
         setError(err.message || "Unable to load profile.");
       } finally {
         setLoading(false);
@@ -72,7 +96,15 @@ export const useUser = (options = {}) => {
         throw new Error((await res.text()) || "Unable to save profile.");
       }
       const updated = await res.json();
-      const nextUser = updated?.user ?? updated;
+      const parsedUser = updated?.user ?? updated;
+      const roles = Array.isArray(parsedUser?.roles) ? parsedUser.roles : [];
+      const badges = Array.isArray(parsedUser?.badges) ? parsedUser.badges : [];
+      const hasManagerBadge =
+        roles.includes("worker") && badges.some((badge) => String(badge || "").toLowerCase() === "manager");
+      const nextUser =
+        hasManagerBadge && !roles.includes("manager")
+          ? { ...parsedUser, roles: [...roles, "manager"] }
+          : parsedUser;
       setUser(nextUser);
       setError("");
       return nextUser;

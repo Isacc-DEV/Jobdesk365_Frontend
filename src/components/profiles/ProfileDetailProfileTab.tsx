@@ -4,11 +4,19 @@ const ProfileDetailProfileTab = ({
   updateProfileForm,
   assignedBidderLabel,
   emailStatusLabel,
-  emailActionLabel,
+  connectActionLabel,
   onConnectEmail,
-  emailConnecting = false
-}) => (
-  <section className="space-y-4" style={{ display: visible ? "block" : "none" }}>
+  onDisconnectEmail,
+  onChangeEmail,
+  emailConnecting = false,
+  emailDisconnecting = false,
+  emailChanging = false
+}) => {
+  const isConnected = profileForm.emailStatus === "connected";
+  const isBusy = emailConnecting || emailDisconnecting || emailChanging;
+
+  return (
+    <section className="space-y-4" style={{ display: visible ? "block" : "none" }}>
     <div className="flex flex-col gap-1">
       <label className="text-sm font-medium text-ink">Profile Name</label>
       <input
@@ -56,19 +64,39 @@ const ProfileDetailProfileTab = ({
             {emailStatusLabel}
           </span>
         </div>
-        {emailActionLabel ? (
+        {isConnected ? (
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={onDisconnectEmail}
+              disabled={!onDisconnectEmail || isBusy}
+              className="px-3 py-1.5 rounded-lg border border-red-200 text-sm font-semibold text-red-600 hover:bg-red-50 disabled:opacity-60 disabled:cursor-not-allowed"
+            >
+              {emailDisconnecting ? "Disconnecting..." : "Disconnect"}
+            </button>
+            <button
+              type="button"
+              onClick={onChangeEmail}
+              disabled={!onChangeEmail || isBusy}
+              className="px-3 py-1.5 rounded-lg border border-border text-sm font-semibold text-ink hover:text-ink disabled:opacity-60 disabled:cursor-not-allowed"
+            >
+              {emailChanging ? "Changing..." : "Change"}
+            </button>
+          </div>
+        ) : (
           <button
             type="button"
             onClick={onConnectEmail}
-            disabled={!onConnectEmail || emailConnecting}
+            disabled={!onConnectEmail || isBusy}
             className="px-3 py-1.5 rounded-lg border border-border text-sm font-semibold text-ink hover:text-ink disabled:opacity-60 disabled:cursor-not-allowed"
           >
-            {emailConnecting ? "Connecting..." : emailActionLabel}
+            {emailConnecting || emailChanging ? "Connecting..." : connectActionLabel}
           </button>
-        ) : null}
+        )}
       </div>
     </div>
-  </section>
-);
+    </section>
+  );
+};
 
 export default ProfileDetailProfileTab;

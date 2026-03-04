@@ -6,18 +6,33 @@ import ProfileList from "../profiles/ProfileList";
 import CreateProfileModal from "../profiles/CreateProfileModal";
 import TemplateSelectModal from "../profiles/TemplateSelectModal";
 import ProfileDetailPanel from "../profiles/ProfileDetailPanel";
-import { BACKEND_ORIGIN } from "../../config";
+import { API_BASE, BACKEND_ORIGIN, TOKEN_KEY } from "../../config";
 import Modal from "../common/Modal";
 import { requestsService } from "../../services/requestsService";
 import HireRequestModal from "../hire/HireRequestModal";
 import { getInboxRouteByRoles } from "../../lib/profilesAccess";
+import { renderResumeTemplate, sanitizeTemplateResume } from "../../lib/resumeTemplateRenderer";
+import {
+  openPreviewWindow,
+  wrapHtmlIfNeeded,
+  writePreviewError,
+  writePreviewHtml
+} from "../../lib/previewWindow";
+
+const TEMPLATE_ENDPOINT = API_BASE ? `${API_BASE}/templates` : "/templates";
 
 const MainPlaceholder = ({ profileMode = "user" }) => {
   const { user } = useUser();
   const roleScope = Array.isArray(user?.roles) ? user.roles : undefined;
   const roles = roleScope || [];
   const inboxRoute = getInboxRouteByRoles(roles);
-  const isAdmin = roles.includes("admin") || roles.includes("manager");
+  const hasAdminRole = roles.includes("admin");
+  const hasManagerRole = roles.includes("manager");
+  const isElevatedCreator = hasAdminRole || hasManagerRole;
+  const allowEditAnyProfile = hasAdminRole || hasManagerRole;
+  const allowDeleteAnyProfile = hasAdminRole;
+  const allowDeleteOwnProfile = !hasManagerRole || hasAdminRole;
+  const isAdmin = hasAdminRole || hasManagerRole;
   const endpointPath =
     profileMode === "admin"
       ? "/admin/profiles"
@@ -33,6 +48,7 @@ const MainPlaceholder = ({ profileMode = "user" }) => {
     deleteProfile,
     fetchProfile,
     startOutlookConnect,
+    disconnectOutlookEmail,
     refreshProfiles,
     assignBidder
   } = useProfiles({ endpointPath });
@@ -46,6 +62,8 @@ const MainPlaceholder = ({ profileMode = "user" }) => {
   const [message, setMessage] = useState("");
   const [messageType, setMessageType] = useState("success");
   const [emailConnecting, setEmailConnecting] = useState(false);
+  const [emailDisconnecting, setEmailDisconnecting] = useState(false);
+  const [emailChanging, setEmailChanging] = useState(false);
   const [bidderModalOpen, setBidderModalOpen] = useState(false);
   const [bidderModalProfile, setBidderModalProfile] = useState(null);
   const [bidderAction, setBidderAction] = useState("assign");
@@ -58,6 +76,109 @@ const MainPlaceholder = ({ profileMode = "user" }) => {
   const [assignLoading, setAssignLoading] = useState(false);
   const [assignSubmitting, setAssignSubmitting] = useState(false);
   const [assignError, setAssignError] = useState("");
+  const [ownerQuery, setOwnerQuery] = useState("");
+  const [ownerOptions, setOwnerOptions] = useState([]);
+  const [ownerLoading, setOwnerLoading] = useState(false);
+  const [ownerError, setOwnerError] = useState("");
+
+  const currentUserId = user?.id ? String(user.id) : "";
+  const currentUsername =
+    user?.username || user?.user_name || user?.email || user?.id || "";
+  const currentDisplayName = user?.display_name || user?.displayName || "";
+  const currentEmail = user?.email || "";
+
+  const normalizeOwnerOption = (candidate) => {
+    const id = candidate?.id ? String(candidate.id) : "";
+    if (!id) return null;
+    return {
+      id,
+      username: candidate?.username ? String(candidate.username) : id,
+      display_name: candidate?.display_name || candidate?.displayName || "",
+      email: candidate?.email || ""
+    };
+  };
+
+  const buildOwnerOptions = (items) => {
+    const map = new Map();
+    const selfOption = normalizeOwnerOption({
+      id: currentUserId,
+      username: currentUsername,
+      display_name: currentDisplayName,
+      email: currentEmail
+    });
+    if (selfOption) {
+      map.set(selfOption.id, selfOption);
+    }
+    (Array.isArray(items) ? items : []).forEach((item) => {
+      const normalized = normalizeOwnerOption(item);
+      if (normalized) {
+        map.set(normalized.id, normalized);
+      }
+    });
+    return Array.from(map.values());
+  };
+
+  useEffect(() => {
+    if (!createOpen || !isElevatedCreator) {
+      return;
+    }
+
+    const query = ownerQuery.trim();
+
+    let cancelled = false;
+    const timer = window.setTimeout(async () => {
+      try {
+        setOwnerLoading(true);
+        setOwnerError("");
+        const users = await requestsService.searchUsers(query, {
+          roles: roleScope,
+          context: "profile_owner"
+        });
+        if (cancelled) return;
+        setOwnerOptions(buildOwnerOptions(users));
+      } catch (err) {
+        if (cancelled) return;
+        setOwnerError(err?.message || "Unable to search users.");
+        setOwnerOptions(buildOwnerOptions([]));
+      } finally {
+        if (!cancelled) {
+          setOwnerLoading(false);
+        }
+      }
+    }, 250);
+
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+    };
+  }, [
+    createOpen,
+    isElevatedCreator,
+    ownerQuery,
+    roleScope,
+    currentUserId,
+    currentUsername,
+    currentDisplayName,
+    currentEmail
+  ]);
+
+  const openCreateModal = () => {
+    setCreateOpen(true);
+    if (isElevatedCreator) {
+      setOwnerQuery("");
+      setOwnerError("");
+      setOwnerLoading(false);
+      setOwnerOptions(buildOwnerOptions([]));
+    }
+  };
+
+  const closeCreateModal = () => {
+    setCreateOpen(false);
+    setOwnerQuery("");
+    setOwnerError("");
+    setOwnerLoading(false);
+    setOwnerOptions([]);
+  };
 
   useEffect(() => {
     const formatTraceSuffix = (traceId) =>
@@ -229,11 +350,15 @@ const MainPlaceholder = ({ profileMode = "user" }) => {
   const handleCreate = async (payload) => {
     try {
       setMessage("");
-      await createProfile({
+      const createPayload = {
         name: payload.name,
         description: payload.description,
         resume_template_id: payload.templateId
-      });
+      };
+      if (isElevatedCreator && payload.ownerUserId) {
+        createPayload.user_id = payload.ownerUserId;
+      }
+      await createProfile(createPayload);
       setMessageType("success");
       setMessage("Profile created successfully.");
     } catch (err) {
@@ -243,48 +368,121 @@ const MainPlaceholder = ({ profileMode = "user" }) => {
     }
   };
 
+  const openOutlookConnectFlow = async (profileId) => {
+    if (!profileId) return;
+    const authUrl = await startOutlookConnect(profileId);
+    if (!authUrl) return;
+    const width = 600;
+    const height = 720;
+    const left = window.screenX + Math.max(0, (window.outerWidth - width) / 2);
+    const top = window.screenY + Math.max(0, (window.outerHeight - height) / 2);
+    const popup = window.open(
+      authUrl,
+      "outlook-connect",
+      `width=${width},height=${height},left=${left},top=${top}`
+    );
+    if (!popup) {
+      throw new Error("Popup blocked. Please allow popups and try again.");
+    }
+
+    const startedAt = Date.now();
+    const pollWindow = window.setInterval(async () => {
+      const elapsed = Date.now() - startedAt;
+      if (!popup.closed && elapsed < 5 * 60 * 1000) {
+        return;
+      }
+      window.clearInterval(pollWindow);
+      try {
+        const updated = await fetchProfile(profileId);
+        if (updated) {
+          setDetailProfile((prev) => (prev?.id === profileId ? updated : prev));
+        }
+        await refreshProfiles();
+      } catch {
+        // noop: message listener still handles successful callback in normal flow.
+      }
+    }, 1000);
+  };
+
+  const runDisconnectFlow = async (profileId) => {
+    const updated = await disconnectOutlookEmail(profileId);
+    if (updated) {
+      setDetailProfile((prev) => (prev?.id === profileId ? updated : prev));
+    }
+    await refreshProfiles();
+    return updated;
+  };
+
   const handleConnectEmail = async (profileId) => {
     if (!profileId) return;
     try {
       setMessage("");
       setEmailConnecting(true);
-      const authUrl = await startOutlookConnect(profileId);
-      if (!authUrl) return;
-      const width = 600;
-      const height = 720;
-      const left = window.screenX + Math.max(0, (window.outerWidth - width) / 2);
-      const top = window.screenY + Math.max(0, (window.outerHeight - height) / 2);
-      const popup = window.open(
-        authUrl,
-        "outlook-connect",
-        `width=${width},height=${height},left=${left},top=${top}`
-      );
-      if (!popup) {
-        throw new Error("Popup blocked. Please allow popups and try again.");
-      }
-
-      const startedAt = Date.now();
-      const pollWindow = window.setInterval(async () => {
-        const elapsed = Date.now() - startedAt;
-        if (!popup.closed && elapsed < 5 * 60 * 1000) {
-          return;
-        }
-        window.clearInterval(pollWindow);
-        try {
-          const updated = await fetchProfile(profileId);
-          if (updated) {
-            setDetailProfile((prev) => (prev?.id === profileId ? updated : prev));
-          }
-          await refreshProfiles();
-        } catch {
-          // noop: message listener still handles successful callback in normal flow.
-        }
-      }, 1000);
+      await openOutlookConnectFlow(profileId);
     } catch (err) {
       setMessageType("error");
       setMessage(err?.message || "Unable to start email connection.");
     } finally {
       setEmailConnecting(false);
+    }
+  };
+
+  const handleDisconnectEmail = async (profileId) => {
+    if (!profileId) return;
+    const confirmed = window.confirm(
+      "Disconnect this profile email? Existing synced emails and calendar events for this account will be removed."
+    );
+    if (!confirmed) return;
+
+    try {
+      setMessage("");
+      setEmailDisconnecting(true);
+      await runDisconnectFlow(profileId);
+      setMessageType("success");
+      setMessage("Email disconnected. Synced email/calendar data removed.");
+    } catch (err) {
+      setMessageType("error");
+      setMessage(err?.message || "Unable to disconnect email.");
+    } finally {
+      setEmailDisconnecting(false);
+    }
+  };
+
+  const handleChangeEmail = async (profileId) => {
+    if (!profileId) return;
+    const confirmed = window.confirm(
+      "Change connected email account? This will disconnect the current account and remove its synced emails/calendar before reconnecting."
+    );
+    if (!confirmed) return;
+
+    setMessage("");
+    setEmailChanging(true);
+    try {
+      setEmailDisconnecting(true);
+      await runDisconnectFlow(profileId);
+      setMessageType("success");
+      setMessage("Previous email disconnected. Complete Outlook sign-in to connect a new account.");
+    } catch (err) {
+      setMessageType("error");
+      setMessage(err?.message || "Unable to disconnect current email.");
+      setEmailDisconnecting(false);
+      setEmailChanging(false);
+      return;
+    } finally {
+      setEmailDisconnecting(false);
+    }
+
+    try {
+      setEmailConnecting(true);
+      await openOutlookConnectFlow(profileId);
+    } catch (err) {
+      setMessageType("error");
+      setMessage(
+        `Previous email disconnected. ${err?.message || "Unable to start reconnection. Please reconnect manually."}`
+      );
+    } finally {
+      setEmailConnecting(false);
+      setEmailChanging(false);
     }
   };
 
@@ -307,6 +505,130 @@ const MainPlaceholder = ({ profileMode = "user" }) => {
     window.dispatchEvent(new PopStateEvent("popstate"));
   };
 
+  const splitLines = (value) =>
+    String(value || "")
+      .split("\n")
+      .map((line) => line.trim())
+      .filter(Boolean);
+
+  const buildResumePreviewPayload = (profile) => {
+    const raw = profile?.raw || {};
+    let resume = raw.base_resume ?? raw.baseResume;
+    if (!resume) {
+      throw new Error("This profile has no base resume to preview.");
+    }
+    if (typeof resume === "string") {
+      try {
+        resume = JSON.parse(resume);
+      } catch {
+        throw new Error("Base resume JSON is invalid.");
+      }
+    }
+    if (!resume || typeof resume !== "object" || Array.isArray(resume)) {
+      throw new Error("Base resume format is invalid.");
+    }
+
+    const profileBlock = resume.Profile || resume.profile || {};
+    const contactBlock = profileBlock.contact || resume.contact || {};
+    const experienceSource =
+      resume.workExperience || resume.work_experience || resume.workExperience || resume.experience || [];
+    const educationSource = resume.education || resume.educationHistory || [];
+    const skillsValue =
+      resume.skills?.raw || resume.skills?.skills || resume.skills || resume.skill || [];
+    const skills = Array.isArray(skillsValue)
+      ? skillsValue.map((item) => String(item || "").trim()).filter(Boolean)
+      : typeof skillsValue === "string"
+      ? skillsValue
+          .split(",")
+          .map((item) => item.trim())
+          .filter(Boolean)
+      : [];
+
+    return {
+      Profile: {
+        name:
+          profileBlock.name || resume.name || resume.full_name || resume.fullName || profile?.name || "",
+        headline: profileBlock.headline || resume.headline || profile?.subtitle || "",
+        contact: {
+          location: contactBlock.location || resume.location || resume.location_text || resume.locationText || "",
+          email: contactBlock.email || resume.email || "",
+          phone: contactBlock.phone || resume.phone || resume.phone_number || resume.phoneNumber || "",
+          linkedin: contactBlock.linkedin || resume.linkedin || resume.linkedin_url || resume.linkedinUrl || ""
+        }
+      },
+      summary: {
+        text: resume.summary?.text || resume.summary?.summary || resume.summary || ""
+      },
+      workExperience: (Array.isArray(experienceSource) ? experienceSource : []).map((exp) => ({
+        companyTitle: exp?.companyTitle || exp?.company_name || exp?.companyName || "",
+        roleTitle: exp?.roleTitle || exp?.role_title || "",
+        employmentType: exp?.employmentType || exp?.employment_type || "",
+        location: exp?.location || exp?.location_text || exp?.locationText || "",
+        startDate: exp?.startDate || exp?.start_date || "",
+        endDate: exp?.isPresent ? "Present" : exp?.endDate || exp?.end_date || "",
+        bullets: splitLines(exp?.bullets ?? exp?.bullet_points ?? exp?.bulletPoints ?? "")
+      })),
+      education: (Array.isArray(educationSource) ? educationSource : []).map((edu) => ({
+        institution: edu?.institution || edu?.school || "",
+        degree: edu?.degree || "",
+        field: edu?.field || edu?.major || "",
+        date: edu?.date || edu?.graduationDate || "",
+        coursework: splitLines(edu?.coursework ?? edu?.courses ?? "")
+      })),
+      skills: { raw: skills }
+    };
+  };
+
+  const fetchTemplateCodeById = async (templateId) => {
+    const token = typeof window !== "undefined" ? window.localStorage.getItem(TOKEN_KEY) : null;
+    if (!token) {
+      throw new Error("Missing token.");
+    }
+    const res = await fetch(`${TEMPLATE_ENDPOINT}/${templateId}`, {
+      headers: {
+        Authorization: `Bearer ${token}`
+      }
+    });
+    if (res.status === 401 && typeof window !== "undefined") {
+      window.location.href = "/auth";
+      throw new Error("Authentication required.");
+    }
+    if (!res.ok) {
+      const text = await res.text();
+      throw new Error(text || `Unable to load template (${res.status}).`);
+    }
+    const data = await res.json();
+    const code = typeof data?.code === "string" ? data.code : "";
+    if (!code.trim()) {
+      throw new Error("Template HTML is empty.");
+    }
+    return code;
+  };
+
+  const handlePreviewBaseResume = async (profile) => {
+    const popup = openPreviewWindow();
+    if (!popup) {
+      setMessageType("error");
+      setMessage("Popup blocked. Please allow popups and try again.");
+      return;
+    }
+    try {
+      const templateId = profile?.templateId || profile?.raw?.resume_template_id;
+      if (!templateId) {
+        throw new Error("No resume template selected for this profile.");
+      }
+      const templateCode = await fetchTemplateCodeById(String(templateId));
+      const resumePayload = sanitizeTemplateResume(buildResumePreviewPayload(profile));
+      const rendered = renderResumeTemplate(templateCode, resumePayload);
+      writePreviewHtml(popup, wrapHtmlIfNeeded(rendered || templateCode));
+    } catch (err) {
+      const message = err?.message || "Unable to open preview.";
+      writePreviewError(popup, message);
+      setMessageType("error");
+      setMessage(message);
+    }
+  };
+
   return (
     <main className="bg-main min-h-[calc(100vh-64px)] border-t border-border px-8 py-8">
       <div className="mx-auto flex max-w-[1440px] flex-col gap-6">
@@ -317,7 +639,7 @@ const MainPlaceholder = ({ profileMode = "user" }) => {
           </div>
           <button
             className="px-4 py-2 rounded-lg bg-accent-primary text-white text-sm font-semibold"
-            onClick={() => setCreateOpen(true)}
+            onClick={openCreateModal}
           >
             Create Profile
           </button>
@@ -353,10 +675,13 @@ const MainPlaceholder = ({ profileMode = "user" }) => {
             setDetailProfile(profile);
             setDetailOpen(true);
           }}
+          onPreview={handlePreviewBaseResume}
           onBidderRequest={handleBidderRequest}
           onTemplatesOpen={handleOpenResumeTemplates}
           allowBidderAssign={isAdmin}
-          showOwner={isAdmin}
+          allowEditAny={allowEditAnyProfile}
+          allowDeleteAny={allowDeleteAnyProfile}
+          allowDeleteOwn={allowDeleteOwnProfile}
         />
         {message ? (
           <div
@@ -372,11 +697,17 @@ const MainPlaceholder = ({ profileMode = "user" }) => {
       </div>
       <CreateProfileModal
         open={createOpen}
-        onClose={() => setCreateOpen(false)}
+        onClose={closeCreateModal}
         onCreate={handleCreate}
         templates={templates}
         templatesLoading={templatesLoading}
         templatesError={templatesError}
+        requireOwnerSelection={isElevatedCreator}
+        ownerQuery={ownerQuery}
+        ownerOptions={ownerOptions}
+        ownerLoading={ownerLoading}
+        ownerError={ownerError}
+        onOwnerQueryChange={setOwnerQuery}
       />
       <TemplateSelectModal
         open={templateOpen}
@@ -547,6 +878,10 @@ const MainPlaceholder = ({ profileMode = "user" }) => {
         }}
         onConnectEmail={handleConnectEmail}
         emailConnecting={emailConnecting}
+        onDisconnectEmail={handleDisconnectEmail}
+        onChangeEmail={handleChangeEmail}
+        emailDisconnecting={emailDisconnecting}
+        emailChanging={emailChanging}
       />
     </main>
   );

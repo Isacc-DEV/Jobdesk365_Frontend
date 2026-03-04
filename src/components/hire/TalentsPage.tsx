@@ -367,8 +367,8 @@ const TalentsPage = () => {
       <div className="mx-auto flex max-w-[1440px] flex-col gap-6">
         <header className="flex items-start justify-between gap-4">
           <div>
-            <h1 className="text-2xl font-semibold text-ink">Hire Talents</h1>
-            <p className="text-sm text-ink-muted">Caller and bidder profiles.</p>
+            <h1 className="text-2xl font-semibold text-ink">Talents</h1>
+            <p className="text-sm text-ink-muted">Worker cards by badge (Caller and Bidder).</p>
           </div>
           <button
             type="button"

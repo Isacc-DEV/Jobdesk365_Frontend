@@ -27,7 +27,6 @@ export const getUsersNavigation = ({
   { label: "Calendar", icon: Calendar, href: "/calendar" },
   ...(includeSupport ? [{ label: "Support", icon: MessageSquare, href: "/chat" }] : []),
   { label: "Requests", icon: ClipboardList, href: "/requests" },
-  { label: "Hire Talents", icon: Users, href: "/hire-talents" },
+  { label: "Talents", icon: Users, href: "/hire-talents" },
   { label: "VIP Services", icon: Crown }
 ];
-

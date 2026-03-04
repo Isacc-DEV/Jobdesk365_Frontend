@@ -58,8 +58,107 @@ const normalizeDateForTemplate = (value: unknown, allowPresent: boolean) => {
   return cleanString(value);
 };
 
+const normalizeWorkExperienceItems = (items?: TemplateResume["workExperience"]) => {
+  const list = Array.isArray(items) ? items : [];
+  return list
+    .map((item) => {
+      const companyTitle = cleanString(item?.companyTitle);
+      if (!companyTitle) return null;
+      const roleTitle = cleanString(item?.roleTitle);
+      const employmentType = cleanString(item?.employmentType);
+      const location = cleanString(item?.location);
+      const startDate = normalizeDateForTemplate(item?.startDate, false);
+      const endDate = normalizeDateForTemplate(item?.endDate, true);
+      const bullets = (item?.bullets ?? []).map(cleanString).filter(Boolean);
+      return {
+        companyTitle,
+        roleTitle,
+        employmentType,
+        location,
+        startDate,
+        endDate,
+        bullets
+      };
+    })
+    .filter(Boolean) as TemplateResume["workExperience"];
+};
+
+const normalizeEducationItems = (items?: TemplateResume["education"]) => {
+  const list = Array.isArray(items) ? items : [];
+  return list
+    .map((item) => {
+      const institution = cleanString(item?.institution);
+      const degree = cleanString(item?.degree);
+      const field = cleanString(item?.field);
+      const date = normalizeDateForTemplate(item?.date, false);
+      const coursework = (item?.coursework ?? []).map(cleanString).filter(Boolean);
+      if (!institution && !degree && !field && !date && coursework.length === 0) {
+        return null;
+      }
+      return {
+        institution,
+        degree,
+        field,
+        date,
+        coursework
+      };
+    })
+    .filter(Boolean) as TemplateResume["education"];
+};
+
+export const sanitizeTemplateResume = (resume: TemplateResume): TemplateResume => {
+  const profile = resume?.Profile ?? {};
+  const contact = profile?.contact ?? {};
+  const summaryRaw =
+    typeof resume?.summary === "string"
+      ? resume.summary
+      : resume?.summary?.text ?? (resume as any)?.summary?.summary ?? "";
+  const normalizedWorkExperience =
+    normalizeWorkExperienceItems(
+      (resume as any)?.workExperience ??
+      (resume as any)?.work_experience ??
+      (resume as any)?.experience ??
+      []
+    ) ?? [];
+  const normalizedEducation = normalizeEducationItems(
+    (resume as any)?.education ?? (resume as any)?.educationHistory ?? []
+  );
+  const skillsValue =
+    (resume as any)?.skills?.raw ??
+    (resume as any)?.skills?.skills ??
+    (resume as any)?.skills ??
+    (resume as any)?.skill ??
+    [];
+  const skillsRaw = Array.isArray(skillsValue)
+    ? skillsValue.map(cleanString).filter(Boolean)
+    : typeof skillsValue === "string"
+    ? skillsValue
+        .split(",")
+        .map((value) => value.trim())
+        .filter(Boolean)
+    : [];
+
+  return {
+    ...resume,
+    Profile: {
+      name: cleanString(profile?.name),
+      headline: cleanString(profile?.headline),
+      contact: {
+        location: cleanString(contact?.location),
+        email: cleanString(contact?.email),
+        phone: cleanString(contact?.phone),
+        linkedin: cleanString(contact?.linkedin)
+      }
+    },
+    summary: { text: cleanString(summaryRaw) },
+    workExperience: normalizedWorkExperience,
+    education: normalizedEducation,
+    skills: { raw: skillsRaw }
+  };
+};
+
 const buildWorkExperienceHtml = (items?: TemplateResume["workExperience"]) => {
-  const list = items ?? [];
+  const list = normalizeWorkExperienceItems(items);
   if (!list.length) return "";
   return list
     .map((item) => {
@@ -67,8 +166,8 @@ const buildWorkExperienceHtml = (items?: TemplateResume["workExperience"]) => {
         .map(cleanString)
         .filter(Boolean)
         .join(" - ");
-      const startDate = normalizeDateForTemplate(item.startDate, false);
-      const endDate = normalizeDateForTemplate(item.endDate, true);
+      const startDate = cleanString(item.startDate);
+      const endDate = cleanString(item.endDate);
       const dates = [startDate, endDate].filter(Boolean).join(" - ");
       const meta = [item.location, item.employmentType]
         .map(cleanString)
@@ -78,45 +177,55 @@ const buildWorkExperienceHtml = (items?: TemplateResume["workExperience"]) => {
       const bulletHtml = bullets.length
         ? `<ul>${bullets.map((bullet) => `<li>${escapeHtml(bullet)}</li>`).join("")}</ul>`
         : "";
-      const header = escapeHtml(title || "Role");
+      if (!title) return "";
+      const header = escapeHtml(title);
       const datesHtml = dates ? `<div class="resume-meta">${escapeHtml(dates)}</div>` : "";
       const metaHtml = meta ? `<div class="resume-meta">${escapeHtml(meta)}</div>` : "";
       return `<div class="resume-item"><div><strong>${header}</strong></div>${datesHtml}${metaHtml}${bulletHtml}</div>`;
     })
+    .filter(Boolean)
     .join("");
 };
 
 const buildEducationHtml = (items?: TemplateResume["education"]) => {
-  const list = items ?? [];
+  const list = normalizeEducationItems(items);
   if (!list.length) return "";
   return list
     .map((item) => {
       const title = [item.degree, item.field].map(cleanString).filter(Boolean).join(" - ");
       const header = [item.institution, title].map(cleanString).filter(Boolean).join(" | ");
-      const date = cleanString(item.date);
+      const date = normalizeDateForTemplate(item.date, false);
       const coursework = (item.coursework ?? []).map(cleanString).filter(Boolean);
       const courseworkText = coursework.length ? `Coursework: ${coursework.join(", ")}` : "";
       const dateHtml = date ? `<div class="resume-meta">${escapeHtml(date)}</div>` : "";
       const courseworkHtml = courseworkText
         ? `<div class="resume-meta">${escapeHtml(courseworkText)}</div>`
         : "";
-      const label = escapeHtml(header || "Education");
-      return `<div class="resume-item"><div><strong>${label}</strong></div>${dateHtml}${courseworkHtml}</div>`;
+      if (!header && !date && !courseworkText) return "";
+      const headerHtml = header ? `<div><strong>${escapeHtml(header)}</strong></div>` : "";
+      return `<div class="resume-item">${headerHtml}${dateHtml}${courseworkHtml}</div>`;
     })
+    .filter(Boolean)
     .join("");
 };
 
 export const buildTemplateData = (resume: TemplateResume) => {
-  const normalizedResume = (normalizeResumeWorkExperienceDates(resume) as TemplateResume) ?? resume;
-  const profile = normalizedResume.Profile ?? {};
+  const normalizedResume = (
+    normalizeResumeWorkExperienceDates(resume) as TemplateResume
+  ) ?? resume;
+  const cleanedResume = sanitizeTemplateResume(normalizedResume);
+  const profile = cleanedResume.Profile ?? {};
   const contact = profile.contact ?? {};
-  const summary = normalizedResume.summary ?? {};
-  const skills = normalizedResume.skills ?? {};
+  const summary = cleanedResume.summary ?? {};
+  const skills = cleanedResume.skills ?? {};
   const normalizedWorkExperience =
-    normalizedResume.workExperience ??
-    (normalizedResume as any).work_experience ??
-    (normalizedResume as any).experience ??
+    cleanedResume.workExperience ??
+    (cleanedResume as any).work_experience ??
+    (cleanedResume as any).experience ??
     [];
+  const normalizedEducation = cleanedResume.education ?? [];
+  const summaryText = cleanString(summary.text);
+  const skillsRaw = (skills.raw ?? []).map(cleanString).filter(Boolean);
 
   return {
     profile: {
@@ -139,11 +248,15 @@ export const buildTemplateData = (resume: TemplateResume) => {
         linkedin: contact.linkedin || ""
       }
     },
-    summary: { text: summary.text || "" },
-    skills: { raw: skills.raw ?? [] },
+    summary: { text: summaryText },
+    skills: { raw: skillsRaw },
     workExperience: normalizedWorkExperience,
     work_experience: normalizedWorkExperience,
-    education: normalizedResume.education ?? []
+    education: normalizedEducation,
+    hasWorkExperience: normalizedWorkExperience.length > 0,
+    hasEducation: normalizedEducation.length > 0,
+    hasSummary: summaryText.length > 0,
+    hasSkills: skillsRaw.length > 0
   };
 };
 

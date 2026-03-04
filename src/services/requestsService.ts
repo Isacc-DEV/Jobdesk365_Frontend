@@ -123,9 +123,16 @@ export const requestsService = {
     }, options?.roles);
   },
 
-  async searchUsers(query: string, options?: { roles?: unknown }) {
+  async searchUsers(
+    query: string,
+    options?: { roles?: unknown; context?: string }
+  ) {
     const q = encodeURIComponent(query);
-    const data = await apiFetch(`/users?q=${q}`, { method: "GET" }, options?.roles);
+    const context =
+      options?.context && String(options.context).trim()
+        ? `&context=${encodeURIComponent(String(options.context).trim())}`
+        : "";
+    const data = await apiFetch(`/users?q=${q}${context}`, { method: "GET" }, options?.roles);
     return Array.isArray(data?.items) ? data.items : [];
   }
 };

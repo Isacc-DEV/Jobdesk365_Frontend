@@ -42,11 +42,12 @@ const App = () => {
   const isLandingRoute = route === "/" || route.startsWith("/landing");
 
   const { isAuthed, authChecked } = useAuthGuard();
-  const { user, loading: userLoading } = useUser({ enabled: isAuthed, redirectOnUnauthorized: false });
+  const { user, loading: userLoading, error: userError } = useUser({ enabled: isAuthed, redirectOnUnauthorized: false });
   const roles = Array.isArray(user?.roles) ? user.roles : [];
-  const roleBucket = getRoleBucketFromRoles(roles);
+  const badges = Array.isArray(user?.badges) ? user.badges : [];
+  const roleBucket = getRoleBucketFromRoles(roles, badges);
   const isEmployee = isEmployeeByRoles(roles);
-  const navigationItems = useRoleNavigation(roles);
+  const navigationItems = useRoleNavigation(roles, badges);
 
   const showLiveChat = !isAuthed || (!userLoading && !isEmployee);
   const token = typeof window !== "undefined" ? window.localStorage.getItem(TOKEN_KEY) : null;
@@ -122,6 +123,24 @@ const App = () => {
         <LandingPage onNavigate={navigate} />
         {showLiveChat ? <LiveChatCard /> : null}
       </>
+    );
+  }
+
+  if (
+    isAuthed &&
+    !userLoading &&
+    !user &&
+    [
+      "plz contact to support team and get verified as internal worker",
+      "Your account is blocked. Please contact support team."
+    ].includes(userError)
+  ) {
+    return (
+      <div className="min-h-screen bg-page text-ink flex items-center justify-center px-6">
+        <p className="text-base text-ink-muted text-center">
+          {userError}
+        </p>
+      </div>
     );
   }
 

@@ -1,7 +1,7 @@
 import { useRef, useState } from "react";
 import { Eye } from "lucide-react";
 import { API_BASE, TOKEN_KEY } from "../../config";
-import { renderResumeTemplate } from "../../lib/resumeTemplateRenderer";
+import { renderResumeTemplate, sanitizeTemplateResume } from "../../lib/resumeTemplateRenderer";
 import {
   openPreviewWindow,
   wrapHtmlIfNeeded,
@@ -25,6 +25,7 @@ const ProfileDetailBaseResumeTab = ({
   removeEducation,
   updateEducation,
   onExperienceDateBlur,
+  onEducationDateBlur,
   resumeDateErrors,
   updateResumeForm,
   onImportJson,
@@ -124,7 +125,7 @@ const ProfileDetailBaseResumeTab = ({
     }
     try {
       const templateCode = await fetchTemplateCode();
-      const resumePayload = buildTemplateResume();
+      const resumePayload = sanitizeTemplateResume(buildTemplateResume());
       const rendered = renderResumeTemplate(templateCode, resumePayload);
       const html = wrapHtmlIfNeeded(rendered || templateCode);
       writePreviewHtml(popup, html);
@@ -358,7 +359,7 @@ const ProfileDetailBaseResumeTab = ({
                   <input
                     type="text"
                     inputMode="numeric"
-                    placeholder="Start Date (MM/YY)"
+                    placeholder="Start Date (MM/YYYY)"
                     className="w-full rounded-lg border border-border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent-primary/40"
                     value={exp.startDate}
                     onChange={(event) => updateExperience(exp.id, "startDate", event.target.value)}
@@ -372,7 +373,7 @@ const ProfileDetailBaseResumeTab = ({
                   <input
                     type="text"
                     inputMode="numeric"
-                    placeholder="End Date (MM/YY or Present)"
+                    placeholder="End Date (MM/YYYY or Present)"
                     className="w-full rounded-lg border border-border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent-primary/40 disabled:bg-gray-50 disabled:text-ink-muted"
                     value={exp.isPresent ? "Present" : exp.endDate}
                     onChange={(event) => updateExperience(exp.id, "endDate", event.target.value)}
@@ -461,11 +462,15 @@ const ProfileDetailBaseResumeTab = ({
                 />
                 <input
                   type="text"
-                  placeholder="Date"
+                  placeholder="Date (MM/YYYY)"
                   className="w-full rounded-lg border border-border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent-primary/40"
                   value={edu.date}
                   onChange={(event) => updateEducation(edu.id, "date", event.target.value)}
+                  onBlur={() => onEducationDateBlur?.(edu.id)}
                 />
+                {getDateError(edu.id, "date") ? (
+                  <div className="text-xs text-red-600">{getDateError(edu.id, "date")}</div>
+                ) : null}
               </div>
               <textarea
                 rows={3}

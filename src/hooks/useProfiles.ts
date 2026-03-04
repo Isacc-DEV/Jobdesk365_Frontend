@@ -260,6 +260,31 @@ export const useProfiles = (options: UseProfilesOptions = {}) => {
     return data.url;
   }, [endpoint]);
 
+  const disconnectOutlookEmail = useCallback(async (profileId) => {
+    const token = typeof window !== "undefined" ? window.localStorage.getItem(TOKEN_KEY) : null;
+    if (!token) {
+      throw new Error("Missing token");
+    }
+    const res = await fetch(`${endpoint}/${profileId}/email/outlook/disconnect`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${token}`
+      }
+    });
+    if (res.status === 401 && typeof window !== "undefined") {
+      window.location.href = "/auth";
+      return null;
+    }
+    if (!res.ok) {
+      const text = await res.text();
+      throw new Error(text || "Unable to disconnect Outlook email.");
+    }
+    const updated = await res.json();
+    const normalized = normalizeProfile(updated);
+    setProfiles((prev) => prev.map((item) => (item.id === profileId ? normalized : item)));
+    return normalized;
+  }, [endpoint]);
+
   const refreshProfiles = useCallback(async () => {
     await loadProfiles({ showLoading: false });
   }, [loadProfiles]);
@@ -325,6 +350,7 @@ export const useProfiles = (options: UseProfilesOptions = {}) => {
     deleteProfile,
     fetchProfile,
     startOutlookConnect,
+    disconnectOutlookEmail,
     refreshProfiles,
     assignBidder,
     unassignBidder

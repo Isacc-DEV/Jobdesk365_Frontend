@@ -6,12 +6,15 @@ import AuthCard from "./AuthCard";
 import InputField from "./InputField";
 
 const AuthPage = () => {
+  const workerBlockMessage = "plz contact to support team and get verified as internal worker";
+  const blockedMessage = "Your account is blocked. Please contact support team.";
   const [mode, setMode] = useState("signin");
   const [email, setEmail] = useState("");
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [agree, setAgree] = useState(false);
+  const [isInternalUser, setIsInternalUser] = useState(false);
   const [usernameError, setUsernameError] = useState("");
   const [formError, setFormError] = useState("");
   const [loading, setLoading] = useState(false);
@@ -45,7 +48,20 @@ const AuthPage = () => {
         body: JSON.stringify({ email, password })
       });
       if (!res.ok) {
-        const msg = (await res.text()) || "Unable to sign in.";
+        let msg = "Unable to sign in.";
+        try {
+          const data = await res.json();
+          msg = data?.message || data?.error || msg;
+          if (data?.error === "worker_not_verified") {
+            msg = workerBlockMessage;
+          }
+          if (data?.error === "account_blocked") {
+            msg = blockedMessage;
+          }
+        } catch {
+          const text = await res.text();
+          if (text) msg = text;
+        }
         throw new Error(msg);
       }
       const data = await res.json();
@@ -82,7 +98,7 @@ const AuthPage = () => {
         const res = await fetch(`${backendBase}/auth/register`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ email, username, password })
+          body: JSON.stringify({ email, username, password, is_internal_user: isInternalUser })
         });
         if (!res.ok) {
           const msg = (await res.text()) || "Unable to create account.";
@@ -210,6 +226,15 @@ const AuthPage = () => {
               value={confirmPassword}
               onChange={(e) => setConfirmPassword(e.target.value)}
             />
+            <label className="flex items-center gap-2 text-sm text-ink-muted">
+              <input
+                type="checkbox"
+                className="h-4 w-4 rounded border-border"
+                checked={isInternalUser}
+                onChange={(e) => setIsInternalUser(e.target.checked)}
+              />
+              Register as internal user
+            </label>
             <label className="flex items-center gap-2 text-sm text-ink-muted">
               <input
                 type="checkbox"

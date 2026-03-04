@@ -1,4 +1,4 @@
-﻿import { Eye, FileCode, Trash2 } from "lucide-react";
+﻿import { Eye, FileCode, Pencil, Trash2 } from "lucide-react";
 
 const statusStyles = {
   Draft: "bg-gray-100 text-ink-muted",
@@ -14,13 +14,16 @@ const statusStyles = {
 const ProfileRow = ({
   profile,
   onOpen,
+  onPreview,
   onTemplateClick,
   onEmailOpen,
   onDelete,
   onBidderRequest,
   onTemplatesOpen,
   allowBidderAssign,
-  showOwner,
+  allowEditAny,
+  allowDeleteAny,
+  allowDeleteOwn,
   gridTemplate
 }) => {
   const {
@@ -31,14 +34,24 @@ const ProfileRow = ({
     email,
     emailConnected,
     bidder,
-    unreadCount,
-    nextInterview,
     isOwner,
     isAssignedToCurrentUser
   } = profile;
 
   const cellClass = "h-full px-2 border-r border-border flex items-center box-border min-w-0";
   const canOpenEmail = Boolean(emailConnected && email && onEmailOpen);
+  const canEdit = Boolean(onOpen && (isOwner || allowEditAny));
+  const canDelete = Boolean(
+    onDelete && ((isOwner && allowDeleteOwn) || allowDeleteAny)
+  );
+  const editDisabledTitle = allowEditAny
+    ? "Edit profile"
+    : "Only profile owner can edit";
+  const deleteDisabledTitle = allowDeleteAny
+    ? "Delete profile"
+    : allowDeleteOwn
+    ? "Only profile owner can delete"
+    : "You do not have delete access";
   const handleEmailOpen = (event) => {
     event.stopPropagation();
     if (canOpenEmail) {
@@ -48,7 +61,7 @@ const ProfileRow = ({
 
   const emailNode = emailConnected ? (
     <div className="flex flex-col">
-      <span className="text-sm font-medium text-ink">{email ?? "—"}</span>
+      <span className="text-sm font-medium text-ink">{email ?? "-"}</span>
       <span className="text-[12px] text-green-600 font-semibold">Connected</span>
     </div>
   ) : (
@@ -74,13 +87,11 @@ const ProfileRow = ({
           </div>
         </div>
 
-        {showOwner ? (
-          <div className={`${cellClass} text-sm text-ink`}>
-            <span className="truncate" title={ownerUsername || "-"}>
-              {ownerUsername || "-"}
-            </span>
-          </div>
-        ) : null}
+        <div className={`${cellClass} text-sm text-ink`}>
+          <span className="truncate" title={ownerUsername || "-"}>
+            {ownerUsername || "-"}
+          </span>
+        </div>
 
         <div className={`${cellClass} justify-start gap-2`}>
           {canOpenEmail ? (
@@ -108,7 +119,7 @@ const ProfileRow = ({
               className="text-left font-medium text-accent-primary hover:underline truncate"
               title={templateTitle || "Select template"}
             >
-              {templateTitle || "—"}
+              {templateTitle || "-"}
             </button>
             {onTemplatesOpen ? (
               <button
@@ -150,46 +161,55 @@ const ProfileRow = ({
           )}
         </div>
 
-        <div className={`${cellClass} text-sm text-ink justify-start`}>
-          {unreadCount > 0 ? (
-            <span className="px-2 py-1 rounded-full bg-accent-primary/10 text-accent-primary font-semibold text-[12px]">
-              {unreadCount} unread
-            </span>
-          ) : (
-            "—"
-          )}
-        </div>
-
-        <div className={`${cellClass} text-sm text-ink justify-start`}>
-          {nextInterview ?? "—"}
-        </div>
-
         <div className="flex justify-end px-2 h-full items-center box-border min-w-0">
           <div className="flex items-center gap-2">
             <button
               type="button"
-              aria-label="Open profile"
+              aria-label="Edit profile"
               onClick={(e) => {
                 e.stopPropagation();
+                if (!canEdit) return;
                 onOpen();
+              }}
+              disabled={!canEdit}
+              title={canEdit ? "Edit profile" : editDisabledTitle}
+              className={`p-1.5 rounded-md ${
+                canEdit
+                  ? "text-ink-muted hover:text-ink hover:bg-gray-100"
+                  : "text-ink-muted/50 cursor-not-allowed"
+              }`}
+            >
+              <Pencil size={18} />
+            </button>
+            <button
+              type="button"
+              aria-label="Preview base resume"
+              onClick={(e) => {
+                e.stopPropagation();
+                onPreview?.();
               }}
               className="p-1.5 rounded-md text-ink-muted hover:text-ink hover:bg-gray-100"
             >
               <Eye size={18} />
             </button>
-            {isOwner ? (
-              <button
-                type="button"
-                aria-label="Delete profile"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onDelete?.();
-                }}
-                className="p-1.5 rounded-md text-ink-muted hover:text-red-600 hover:bg-red-50"
-              >
-                <Trash2 size={18} />
-              </button>
-            ) : null}
+            <button
+              type="button"
+              aria-label="Delete profile"
+              onClick={(e) => {
+                e.stopPropagation();
+                if (!canDelete) return;
+                onDelete();
+              }}
+              disabled={!canDelete}
+              title={canDelete ? "Delete profile" : deleteDisabledTitle}
+              className={`p-1.5 rounded-md ${
+                canDelete
+                  ? "text-ink-muted hover:text-red-600 hover:bg-red-50"
+                  : "text-ink-muted/50 cursor-not-allowed"
+              }`}
+            >
+              <Trash2 size={18} />
+            </button>
           </div>
         </div>
       </div>

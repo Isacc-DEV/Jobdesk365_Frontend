@@ -29,8 +29,8 @@ const normalizeMonthYear = (monthRaw: string, yearRaw: string): string | null =>
   const month = Number(monthRaw);
   if (!Number.isInteger(month) || month < 1 || month > 12) return null;
   if (!/^(\d{2}|\d{4})$/.test(yearRaw)) return null;
-  const year2 = yearRaw.slice(-2);
-  return `${String(month).padStart(2, "0")}/${year2}`;
+  const year = yearRaw.length === 2 ? `20${yearRaw}` : yearRaw;
+  return `${String(month).padStart(2, "0")}/${year}`;
 };
 
 const normalizeDateUsingPatterns = (value: string): string | null => {
@@ -79,7 +79,7 @@ export const normalizeResumeDateInput = (
     value,
     isValid: false,
     isEmpty: false,
-    error: `Invalid date "${value}". Expected MM/YY${allowPresent ? " or Present" : ""}.`
+    error: `Invalid date "${value}". Expected MM/YYYY${allowPresent ? " or Present" : ""}.`
   };
 };
 

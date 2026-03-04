@@ -23,7 +23,6 @@ export const getManagersNavigation = (): NavigationItem[] => [
   { label: "Calendar", icon: Calendar, href: "/manager/calendar" },
   { label: "Support", icon: MessageSquare, href: "/chat" },
   { label: "Requests", icon: ClipboardList, href: "/manager/requests" },
-  { label: "Hire Talents", icon: Users, href: "/hire-talents" },
+  { label: "Talents", icon: Users, href: "/hire-talents" },
   { label: "VIP Services", icon: Crown }
 ];
-

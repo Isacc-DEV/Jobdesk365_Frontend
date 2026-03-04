@@ -5,8 +5,8 @@ import { getManagersNavigation } from "./managersNavigation";
 import type { NavigationItem } from "./types";
 import { getUsersNavigation } from "./usersNavigation";
 
-export const useRoleNavigation = (roles: unknown): NavigationItem[] => {
-  const roleBucket = getRoleBucketFromRoles(roles);
+export const useRoleNavigation = (roles: unknown, badges?: unknown): NavigationItem[] => {
+  const roleBucket = getRoleBucketFromRoles(roles, badges);
   const isEmployee = isEmployeeByRoles(roles);
 
   return useMemo(() => {
@@ -15,4 +15,3 @@ export const useRoleNavigation = (roles: unknown): NavigationItem[] => {
     return getUsersNavigation({ includeSupport: isEmployee });
   }, [isEmployee, roleBucket]);
 };
-
