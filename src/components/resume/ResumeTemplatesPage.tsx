@@ -1,9 +1,15 @@
 import { useEffect, useMemo, useState } from "react";
-import { Eye, FileCode, Pencil, Plus, Save, Trash2, X } from "lucide-react";
+import { Eye, Pencil, Plus, Save, Trash2, X } from "lucide-react";
 import { API_BASE, TOKEN_KEY } from "../../config";
 import { useUser } from "../../hooks/useUser";
 import { renderResumeTemplate as renderResumeTemplateShared } from "../../lib/resumeTemplateRenderer";
 import { normalizeResumeDateInput } from "../../lib/resumeDate";
+import {
+  openPreviewWindow,
+  wrapHtmlIfNeeded,
+  writePreviewError,
+  writePreviewHtml
+} from "../../lib/previewWindow";
 
 type ResumeTemplate = {
   id: string;
@@ -465,14 +471,6 @@ const renderValue = (value: unknown, path: string) => {
   return escapeHtml(String(value));
 };
 
-const wrapHtmlIfNeeded = (value: string) => {
-  const trimmed = value.trim().toLowerCase();
-  if (!trimmed.startsWith("<!doctype") && !trimmed.startsWith("<html")) {
-    return `<!doctype html><html><body>${value}</body></html>`;
-  }
-  return value;
-};
-
 const ResumeTemplatesPage = () => {
   const { user } = useUser();
   const roles = Array.isArray(user?.roles) ? user.roles : [];
@@ -617,22 +615,29 @@ const ResumeTemplatesPage = () => {
   };
   const openPreviewTab = async (id: string) => {
     if (typeof window === "undefined") return;
-    const detail = await loadTemplateDetail(id);
-    const html = detail?.code || "";
-    if (!html.trim()) {
-      setError("Template HTML is empty.");
-      return;
-    }
-    const rendered = renderResumeTemplateShared(html, getMockResumeData());
-    const doc = wrapHtmlIfNeeded(rendered);
-    const popup = window.open("", "_blank", "noopener,noreferrer");
+    setError("");
+    const popup = openPreviewWindow();
     if (!popup) {
       setError("Popup blocked. Please allow popups and try again.");
       return;
     }
-    popup.document.open();
-    popup.document.write(doc);
-    popup.document.close();
+    try {
+      const detail = await loadTemplateDetail(id);
+      if (!detail) {
+        throw new Error("Unable to load template.");
+      }
+      const html = detail?.code || "";
+      if (!html.trim()) {
+        throw new Error("Template HTML is empty.");
+      }
+      const rendered = renderResumeTemplateShared(html, getMockResumeData());
+      const doc = wrapHtmlIfNeeded(rendered);
+      writePreviewHtml(popup, doc);
+    } catch (err: any) {
+      const message = err?.message || "Unable to open preview.";
+      setError(message);
+      writePreviewError(popup, message);
+    }
   };
 
 

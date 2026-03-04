@@ -1,11 +1,19 @@
-import { useNavigation } from "../../hooks/useNavigation";
+import type { NavigationItem } from "../../navigation/types";
 import SidebarItem from "./SidebarItem";
 
 const COLLAPSED_WIDTH = 72;
 const EXPANDED_WIDTH = 240;
 
-const Sidebar = ({ expanded, onExpand, onCollapse, currentRoute, onNavigate }) => {
-  const items = useNavigation();
+type SidebarProps = {
+  items: NavigationItem[];
+  expanded: boolean;
+  onExpand: () => void;
+  onCollapse: () => void;
+  currentRoute: string;
+  onNavigate?: (path: string) => void;
+};
+
+const Sidebar = ({ items, expanded, onExpand, onCollapse, currentRoute, onNavigate }: SidebarProps) => {
   const width = expanded ? EXPANDED_WIDTH : COLLAPSED_WIDTH;
 
   return (

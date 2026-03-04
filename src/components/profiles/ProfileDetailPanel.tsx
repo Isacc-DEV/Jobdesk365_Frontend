@@ -633,6 +633,8 @@ const ProfileDetailPanel = ({
                 <ProfileDetailBaseResumeTab
                   visible={activeTab === "baseResume"}
                   resumeForm={resumeForm}
+                  templateId={profile?.templateId || profile?.raw?.resume_template_id || ""}
+                  templateTitle={profile?.templateTitle || profile?.raw?.resume_template_title || ""}
                   skillsInput={skillsInput}
                   setSkillsInput={setSkillsInput}
                   handleSkillKeyDown={handleSkillKeyDown}

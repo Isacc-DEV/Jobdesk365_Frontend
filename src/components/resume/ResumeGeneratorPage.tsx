@@ -20,6 +20,12 @@ import {
   normalizeResumeWorkExperienceDates
 } from "../../lib/resumeDate";
 import {
+  openPreviewWindow,
+  wrapHtmlIfNeeded,
+  writePreviewError,
+  writePreviewHtml
+} from "../../lib/previewWindow";
+import {
   getProfilesEndpointPathByRoles,
   getProfilesRouteByRoles
 } from "../../lib/profilesAccess";
@@ -142,14 +148,6 @@ const splitSummaryLines = (summary: string) =>
     .split("\n")
     .map((line) => line.trim())
     .filter(Boolean);
-
-const wrapHtmlIfNeeded = (value: string) => {
-  const trimmed = value.trim().toLowerCase();
-  if (!trimmed.startsWith("<!doctype") && !trimmed.startsWith("<html")) {
-    return `<!doctype html><html><body>${value}</body></html>`;
-  }
-  return value;
-};
 
 const serializeForScript = (value: unknown) =>
   JSON.stringify(value)
@@ -636,6 +634,14 @@ const ResumeGeneratorPage = () => {
       return;
     }
     if (previewLoading) return;
+    let previewWindow: Window | null = null;
+    if (!autoPrint) {
+      previewWindow = openPreviewWindow();
+      if (!previewWindow) {
+        setGenerationError("Popup blocked. Please allow popups and try again.");
+        return;
+      }
+    }
     setPreviewLoading(true);
     try {
       const template = await fetchTemplateCode(String(templateId));
@@ -658,15 +664,16 @@ const ResumeGeneratorPage = () => {
         return;
       }
 
-      const previewWindow = window.open("", "_blank", "noopener,noreferrer");
       if (!previewWindow) {
         throw new Error("Popup blocked. Please allow popups and try again.");
       }
-      previewWindow.document.open();
-      previewWindow.document.write(templateWithData);
-      previewWindow.document.close();
+      writePreviewHtml(previewWindow, templateWithData);
     } catch (err: any) {
-      setGenerationError(err?.message || "Unable to open preview.");
+      const message = err?.message || "Unable to open preview.";
+      setGenerationError(message);
+      if (previewWindow) {
+        writePreviewError(previewWindow, message);
+      }
     } finally {
       setPreviewLoading(false);
     }
