@@ -3,7 +3,19 @@ import FullCalendar from "@fullcalendar/react";
 import dayGridPlugin from "@fullcalendar/daygrid";
 import timeGridPlugin from "@fullcalendar/timegrid";
 import interactionPlugin from "@fullcalendar/interaction";
-import { Calendar, Check, ChevronDown, ChevronLeft, ChevronRight, RefreshCw, X } from "lucide-react";
+import {
+  Calendar,
+  Check,
+  ChevronDown,
+  ChevronLeft,
+  ChevronRight,
+  CircleX,
+  Clock3,
+  RefreshCw,
+  UserCheck,
+  UserMinus,
+  X
+} from "lucide-react";
 import { API_BASE, TOKEN_KEY } from "../../config";
 import HireRequestModal from "../hire/HireRequestModal";
 import Modal from "../common/Modal";
@@ -62,6 +74,44 @@ type ManualFormState = {
   callerRequestId: string | null;
 };
 
+type ProfileOption = {
+  id: string;
+  name: string;
+  userId: string | null;
+  color: string;
+};
+
+type StatusVisual = {
+  status: CallStatus;
+  label: string;
+  icon: CallStatus;
+  fillAlpha: number;
+  borderAlpha: number;
+};
+
+type ResolvedCalendarEvent = CalendarEventItem & {
+  effectiveCallStatus: CallStatus | null;
+  resolvedProfileName: string;
+  resolvedProfileColor: string | null;
+  baseColor: string;
+  statusVisual: StatusVisual | null;
+};
+
+type ProfileClassifierItem = {
+  key: string;
+  label: string;
+  color: string;
+  count: number;
+};
+
+type StatusClassifierItem = {
+  status: CallStatus;
+  label: string;
+  color: string;
+  icon: CallStatus;
+  count: number;
+};
+
 type OwnerOption = {
   id: string;
   username: string | null;
@@ -93,8 +143,67 @@ const calendarPalette = [
   { dot: "bg-rose-500", text: "text-rose-500", eventBg: "#ffe4e6", eventBorder: "#fda4af", eventText: "#be123c" }
 ];
 
-const manualPendingTone = { eventBg: "#fff7ed", eventBorder: "#f97316", eventText: "#9a3412" };
-const manualAssignedTone = { eventBg: "#dcfce7", eventBorder: "#16a34a", eventText: "#166534" };
+const callStatusOrder: CallStatus[] = ["unassigned", "pending", "assigned", "rejected"];
+
+const manualStatusMeta: Record<
+  CallStatus,
+  { label: string; dot: string; icon: CallStatus; fillAlpha: number; borderAlpha: number }
+> = {
+  unassigned: {
+    label: "Unassigned",
+    dot: "#9ca3af",
+    icon: "unassigned",
+    fillAlpha: 0.18,
+    borderAlpha: 0.38
+  },
+  pending: {
+    label: "Pending",
+    dot: "#f97316",
+    icon: "pending",
+    fillAlpha: 0.3,
+    borderAlpha: 0.5
+  },
+  assigned: {
+    label: "Assigned",
+    dot: "#16a34a",
+    icon: "assigned",
+    fillAlpha: 0.42,
+    borderAlpha: 0.62
+  },
+  rejected: {
+    label: "Rejected",
+    dot: "#ef4444",
+    icon: "rejected",
+    fillAlpha: 0.26,
+    borderAlpha: 0.46
+  }
+};
+
+const statusIconByCallStatus = {
+  unassigned: UserMinus,
+  pending: Clock3,
+  assigned: UserCheck,
+  rejected: CircleX
+};
+
+const noProfileFallbackColor = "#9ca3af";
+const defaultEventTextColor = "#111827";
+const outlookFillAlpha = 0.24;
+const outlookBorderAlpha = 0.44;
+
+const profileFallbackPalette = [
+  "#3b82f6",
+  "#0ea5e9",
+  "#14b8a6",
+  "#22c55e",
+  "#f59e0b",
+  "#f97316",
+  "#ef4444",
+  "#ec4899",
+  "#8b5cf6"
+];
+
+const hexColorPattern = /^#([0-9a-f]{3}|[0-9a-f]{6})$/i;
 
 const callerConflictAlert =
   "that caller already scheduled in that time. If u can't select other caller or u can't reschedule that meeting, plz contact support team";
@@ -150,6 +259,70 @@ const toIsoFromLocalDateTime = (value: string) => {
   return parsed.toISOString();
 };
 
+const normalizeHexColor = (value: unknown): string | null => {
+  if (typeof value !== "string") return null;
+  const trimmed = value.trim();
+  if (!hexColorPattern.test(trimmed)) return null;
+  if (trimmed.length === 4) {
+    return `#${trimmed[1]}${trimmed[1]}${trimmed[2]}${trimmed[2]}${trimmed[3]}${trimmed[3]}`.toLowerCase();
+  }
+  return trimmed.toLowerCase();
+};
+
+const hexToRgb = (hexColor: string) => {
+  const normalized = normalizeHexColor(hexColor);
+  if (!normalized) return null;
+  return {
+    red: parseInt(normalized.slice(1, 3), 16),
+    green: parseInt(normalized.slice(3, 5), 16),
+    blue: parseInt(normalized.slice(5, 7), 16)
+  };
+};
+
+const toRgba = (hexColor: string, alpha: number) => {
+  const rgb = hexToRgb(hexColor);
+  const safeAlpha = Math.max(0, Math.min(1, alpha));
+  if (!rgb) return `rgba(156, 163, 175, ${safeAlpha})`;
+  return `rgba(${rgb.red}, ${rgb.green}, ${rgb.blue}, ${safeAlpha})`;
+};
+
+const hashString = (value: string) => {
+  let hash = 0;
+  for (let index = 0; index < value.length; index += 1) {
+    hash = (hash * 31 + value.charCodeAt(index)) >>> 0;
+  }
+  return hash;
+};
+
+const getFallbackProfileColor = (profileId: string) =>
+  profileFallbackPalette[hashString(profileId) % profileFallbackPalette.length];
+
+const resolveProfileColor = (profile: any, profileId: string) => {
+  const baseInfo =
+    profile?.base_info && typeof profile.base_info === "object" ? profile.base_info : {};
+  const extensionProfile =
+    baseInfo?.extension_profile && typeof baseInfo.extension_profile === "object"
+      ? baseInfo.extension_profile
+      : {};
+  return (
+    normalizeHexColor(extensionProfile?.color) ||
+    normalizeHexColor(baseInfo?.color) ||
+    getFallbackProfileColor(profileId)
+  );
+};
+
+const normalizeProfileOption = (profile: any): ProfileOption | null => {
+  const id = String(profile?.id || "").trim();
+  if (!id) return null;
+  const name = String(profile?.name || "").trim() || "Untitled";
+  return {
+    id,
+    name,
+    userId: profile?.user_id ? String(profile.user_id) : null,
+    color: resolveProfileColor(profile, id)
+  };
+};
+
 const mapCallStatus = (raw: any): CallStatus => {
   const requestStatus = String(raw?.request_status || "").toLowerCase();
   if (requestStatus === "working") return "assigned";
@@ -158,6 +331,17 @@ const mapCallStatus = (raw: any): CallStatus => {
   const next = String(raw?.call_status || "").toLowerCase();
   if (next === "pending" || next === "assigned" || next === "rejected") return next;
   return "unassigned";
+};
+
+const buildStatusVisual = (status: CallStatus): StatusVisual => {
+  const meta = manualStatusMeta[status];
+  return {
+    status,
+    label: meta.label,
+    icon: meta.icon,
+    fillAlpha: meta.fillAlpha,
+    borderAlpha: meta.borderAlpha
+  };
 };
 
 const normalizeAccount = (account: any, index: number): CalendarAccount => {
@@ -237,7 +421,7 @@ const CalendarPage = () => {
   const [events, setEvents] = useState<CalendarEventItem[]>([]);
   const [eventsLoading, setEventsLoading] = useState(false);
   const [eventsError, setEventsError] = useState<string | null>(null);
-  const [activeView, setActiveView] = useState("Month");
+  const [activeView, setActiveView] = useState("Week");
   const [currentDate, setCurrentDate] = useState(() => new Date());
   const [isMonthPickerOpen, setIsMonthPickerOpen] = useState(false);
   const [pickerYear, setPickerYear] = useState(() => new Date().getFullYear());
@@ -246,7 +430,7 @@ const CalendarPage = () => {
   const [callerLoading, setCallerLoading] = useState(false);
   const [callerSubmitting, setCallerSubmitting] = useState(false);
   const [callerError, setCallerError] = useState("");
-  const [selectedEvent, setSelectedEvent] = useState<CalendarEventItem | null>(null);
+  const [selectedEvent, setSelectedEvent] = useState<ResolvedCalendarEvent | null>(null);
   const [callerMode, setCallerMode] = useState("request");
   const [manualModalOpen, setManualModalOpen] = useState(false);
   const [manualSubmitting, setManualSubmitting] = useState(false);
@@ -255,7 +439,7 @@ const CalendarPage = () => {
   const [ownerOptions, setOwnerOptions] = useState<OwnerOption[]>([]);
   const [ownerLoading, setOwnerLoading] = useState(false);
   const [ownerError, setOwnerError] = useState("");
-  const [profileOptions, setProfileOptions] = useState<any[]>([]);
+  const [profileOptions, setProfileOptions] = useState<ProfileOption[]>([]);
   const [profileLoading, setProfileLoading] = useState(false);
   const [profileError, setProfileError] = useState("");
   const [manualForm, setManualForm] = useState<ManualFormState>({
@@ -379,7 +563,10 @@ const CalendarPage = () => {
       if (!res.ok) throw new Error(`Failed to load profiles (${res.status})`);
       const data = await res.json();
       const items = Array.isArray(data?.items) ? data.items : [];
-      setProfileOptions(items);
+      const normalized = items
+        .map((item: any) => normalizeProfileOption(item))
+        .filter((item): item is ProfileOption => Boolean(item));
+      setProfileOptions(normalized);
     } catch (err: any) {
       setProfileError(err?.message || "Unable to load profiles.");
       setProfileOptions([]);
@@ -419,6 +606,10 @@ const CalendarPage = () => {
     void loadAccounts(controller.signal);
     return () => controller.abort();
   }, [loadAccounts]);
+
+  useEffect(() => {
+    void loadProfiles();
+  }, [loadProfiles]);
 
   useEffect(() => {
     if (!accounts.length) {
@@ -490,48 +681,154 @@ const CalendarPage = () => {
     ? events
     : events.filter((event) => event.source === "manual" || event.accountId === activeAccount?.id);
 
-  const accountMap = useMemo(() => {
-    const map = new Map<string, CalendarAccount>();
-    accounts.forEach((item) => map.set(item.id, item));
+  const profileOptionMap = useMemo(() => {
+    const map = new Map<string, ProfileOption>();
+    profileOptions.forEach((profile) => map.set(profile.id, profile));
     return map;
-  }, [accounts]);
+  }, [profileOptions]);
+
+  const resolvedVisibleEvents = useMemo<ResolvedCalendarEvent[]>(
+    () =>
+      visibleEvents.map((event) => {
+        const profileId = event.profileId ? String(event.profileId) : "";
+        const profile = profileId ? profileOptionMap.get(profileId) : null;
+        const resolvedProfileName =
+          String(event.profileName || "").trim() ||
+          profile?.name ||
+          (profileId ? "Unknown profile" : "No profile");
+        const resolvedProfileColor = profileId
+          ? profile?.color || getFallbackProfileColor(profileId)
+          : null;
+        const effectiveCallStatus =
+          event.source === "manual" ? event.callStatus || "unassigned" : null;
+        const baseColor = resolvedProfileColor || noProfileFallbackColor;
+        return {
+          ...event,
+          effectiveCallStatus,
+          resolvedProfileName,
+          resolvedProfileColor,
+          baseColor,
+          statusVisual: effectiveCallStatus ? buildStatusVisual(effectiveCallStatus) : null
+        };
+      }),
+    [profileOptionMap, visibleEvents]
+  );
+
+  const profileClassifierItems = useMemo<ProfileClassifierItem[]>(() => {
+    const grouped = new Map<string, ProfileClassifierItem>();
+    resolvedVisibleEvents.forEach((event) => {
+      const key = event.profileId ? `profile:${event.profileId}` : "profile:none";
+      const label = event.profileId ? event.resolvedProfileName : "No profile";
+      const color = event.profileId ? event.baseColor : noProfileFallbackColor;
+      const existing = grouped.get(key);
+      if (existing) {
+        existing.count += 1;
+        return;
+      }
+      grouped.set(key, { key, label, color, count: 1 });
+    });
+    return Array.from(grouped.values()).sort(
+      (first, second) => second.count - first.count || first.label.localeCompare(second.label)
+    );
+  }, [resolvedVisibleEvents]);
+
+  const statusClassifierItems = useMemo<StatusClassifierItem[]>(() => {
+    const counts = callStatusOrder.reduce(
+      (acc, status) => {
+        acc[status] = 0;
+        return acc;
+      },
+      {} as Record<CallStatus, number>
+    );
+    resolvedVisibleEvents.forEach((event) => {
+      if (event.source !== "manual") return;
+      counts[event.effectiveCallStatus || "unassigned"] += 1;
+    });
+    return callStatusOrder.map((status) => ({
+      status,
+      label: manualStatusMeta[status].label,
+      color: manualStatusMeta[status].dot,
+      icon: manualStatusMeta[status].icon,
+      count: counts[status]
+    }));
+  }, [resolvedVisibleEvents]);
 
   const fullCalendarEvents = useMemo(
     () =>
-      visibleEvents.map((event) => {
-        if (event.source === "manual") {
-          const tone = event.callStatus === "assigned" ? manualAssignedTone : manualPendingTone;
-          return {
-            id: `manual:${event.manualEventId || event.id}`,
-            title: event.title,
-            start: event.start,
-            end: event.end,
-            backgroundColor: tone.eventBg,
-            borderColor: tone.eventBorder,
-            textColor: tone.eventText,
-            extendedProps: { rawEvent: event }
-          };
-        }
-        const tone = accountMap.get(String(event.accountId || "")) || activeAccount;
+      resolvedVisibleEvents.map((event) => {
+        const statusVisual = event.statusVisual;
+        const fillAlpha = statusVisual?.fillAlpha ?? outlookFillAlpha;
+        const borderAlpha = statusVisual?.borderAlpha ?? outlookBorderAlpha;
         return {
-          id: `outlook:${event.id}`,
+          id: event.source === "manual" ? `manual:${event.manualEventId || event.id}` : `outlook:${event.id}`,
           title: event.title,
           start: event.start,
           end: event.end,
-          backgroundColor: tone?.eventBg || "#e5e7eb",
-          borderColor: tone?.eventBorder || "#d1d5db",
-          textColor: tone?.eventText || "#111827",
-          extendedProps: { rawEvent: event }
+          backgroundColor: toRgba(event.baseColor, fillAlpha),
+          borderColor: toRgba(event.baseColor, borderAlpha),
+          textColor: defaultEventTextColor,
+          extendedProps: {
+            rawEvent: event,
+            baseColor: event.baseColor
+          }
         };
       }),
-    [accountMap, activeAccount, visibleEvents]
+    [resolvedVisibleEvents]
+  );
+
+  const handleEventDidMount = useCallback((info: any) => {
+    const accentColor = normalizeHexColor(info?.event?.extendedProps?.baseColor);
+    const element = info?.el as HTMLElement | null;
+    if (!element) return;
+    element.style.boxShadow = accentColor ? `inset 3px 0 0 ${toRgba(accentColor, 0.92)}` : "";
+    element.style.paddingLeft = "4px";
+    element.style.paddingRight = "2px";
+  }, []);
+
+  const renderStatusBadge = useCallback((statusVisual: StatusVisual, compact: boolean) => {
+    const StatusIcon = statusIconByCallStatus[statusVisual.icon];
+    return (
+      <span className="inline-flex items-center gap-1 rounded-full border border-black/10 bg-white/80 px-1.5 py-0.5 text-[10px] font-semibold text-gray-800">
+        <StatusIcon size={10} />
+        {!compact ? <span>{statusVisual.label}</span> : null}
+      </span>
+    );
+  }, []);
+
+  const renderEventContent = useCallback(
+    (info: any) => {
+      const raw = info?.event?.extendedProps?.rawEvent as ResolvedCalendarEvent | undefined;
+      if (!raw) {
+        return (
+          <div className="flex min-w-0 items-center gap-1">
+            {info?.timeText ? <span className="truncate font-semibold">{info.timeText}</span> : null}
+            <span className="truncate">{info?.event?.title || ""}</span>
+          </div>
+        );
+      }
+      const compact = info?.view?.type === "dayGridMonth";
+      const hasStatusBadge = Boolean(raw.statusVisual);
+      const compactWithBadge = compact && hasStatusBadge;
+      return (
+        <div className={`relative flex min-w-0 items-center gap-1 overflow-hidden pl-0.5 ${compactWithBadge ? "pr-5" : "pr-1"}`}>
+          {info?.timeText ? <span className="shrink-0 truncate font-semibold">{info.timeText}</span> : null}
+          <span className="min-w-0 truncate">{raw.title}</span>
+          {raw.statusVisual ? (
+            <span className={compact ? "absolute right-0.5 top-1/2 -translate-y-1/2" : "ml-auto shrink-0"}>
+              {renderStatusBadge(raw.statusVisual, compact)}
+            </span>
+          ) : null}
+        </div>
+      );
+    },
+    [renderStatusBadge]
   );
 
   const filteredProfileOptions = useMemo(() => {
     if (!(isAdmin && !manualForm.id)) return profileOptions;
     if (!manualForm.ownerUserId) return [];
     return profileOptions.filter(
-      (profile: any) => String(profile?.user_id || "") === String(manualForm.ownerUserId || "")
+      (profile) => String(profile.userId || "") === String(manualForm.ownerUserId || "")
     );
   }, [isAdmin, manualForm.id, manualForm.ownerUserId, profileOptions]);
 
@@ -624,7 +921,7 @@ const CalendarPage = () => {
   };
 
   const handleEventClick = (info: any) => {
-    const raw = info?.event?.extendedProps?.rawEvent as CalendarEventItem | undefined;
+    const raw = info?.event?.extendedProps?.rawEvent as ResolvedCalendarEvent | undefined;
     if (!raw) return;
     if (raw.source === "manual") {
       openManualEdit(raw);
@@ -836,6 +1133,45 @@ const CalendarPage = () => {
                 ))
               )}
             </div>
+            <div className="mt-5 border-t border-border pt-4">
+              <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-ink-muted">Profiles</div>
+              <div className="mt-2 space-y-1.5">
+                {profileClassifierItems.length ? (
+                  profileClassifierItems.map((item) => (
+                    <div key={item.key} className="flex items-center justify-between rounded-lg border border-border px-2 py-1.5 text-xs">
+                      <span className="flex min-w-0 items-center gap-2">
+                        <span className="h-2.5 w-2.5 flex-shrink-0 rounded-full" style={{ backgroundColor: item.color }} />
+                        <span className="truncate text-ink-muted">{item.label}</span>
+                      </span>
+                      <span className="ml-2 font-semibold text-ink">{item.count}</span>
+                    </div>
+                  ))
+                ) : (
+                  <div className="text-xs text-ink-muted">No profiles in current view</div>
+                )}
+              </div>
+            </div>
+            <div className="mt-5 border-t border-border pt-4">
+              <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-ink-muted">Status</div>
+              <div className="mt-2 space-y-1.5">
+                {statusClassifierItems.map((item) => (
+                  <div key={item.status} className="flex items-center justify-between rounded-lg border border-border px-2 py-1.5 text-xs">
+                    <span className="flex min-w-0 items-center gap-2">
+                      {(() => {
+                        const StatusIcon = statusIconByCallStatus[item.icon];
+                        return (
+                          <span className="inline-flex items-center gap-1 rounded-full px-1.5 py-0.5 text-[10px] font-semibold text-gray-800" style={{ backgroundColor: toRgba(item.color, 0.2) }}>
+                            <StatusIcon size={10} />
+                            <span className="truncate">{item.label}</span>
+                          </span>
+                        );
+                      })()}
+                    </span>
+                    <span className="ml-2 font-semibold text-ink">{item.count}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
             <button
               type="button"
               onClick={handleConnectCalendar}
@@ -965,6 +1301,8 @@ const CalendarPage = () => {
                     selectMirror
                     events={fullCalendarEvents}
                     height="auto"
+                    eventDidMount={handleEventDidMount}
+                    eventContent={renderEventContent}
                     dateClick={handleDateClick}
                     select={handleSelect}
                     eventClick={handleEventClick}
