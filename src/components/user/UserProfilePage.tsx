@@ -1,7 +1,8 @@
-import { useState, useEffect } from "react";
-import type { ChangeEvent } from "react";
+/* global fetch, Image, URL, File, Blob, FormData */
+import { useState, useEffect, useCallback } from "react";
 import { useUser } from "../../hooks/useUser";
 import { API_BASE, BACKEND_ORIGIN, TOKEN_KEY } from "../../config";
+import { billingService, dispatchUserRefresh } from "../../services/billingService";
 
 const labelClass = "text-sm font-semibold text-ink";
 const inputClass =
@@ -38,6 +39,7 @@ const CIRCLE_SIZE = 220;
 const OUTPUT_SIZE = 512;
 const ZOOM_MIN = 1;
 const ZOOM_MAX = 3;
+const PENDING_TOPUP_STORAGE_KEY = "billing.pendingTopupId";
 
 const resolveAvatarUrl = (value: string) => {
   if (!value) return "";
@@ -70,7 +72,7 @@ const emptyForm: ProfileForm = {
 };
 
 const UserProfilePage = () => {
-  const { user, updateUser, loading, error, saving } = useUser();
+  const { user, updateUser, loading, error, saving, reloadUser } = useUser();
   const [form, setForm] = useState<ProfileForm>(emptyForm);
   const [saved, setSaved] = useState(false);
   const [activeTab, setActiveTab] = useState("profile");
@@ -89,6 +91,13 @@ const UserProfilePage = () => {
   const [passwordError, setPasswordError] = useState("");
   const [passwordSuccess, setPasswordSuccess] = useState("");
   const [passwordSaving, setPasswordSaving] = useState(false);
+  const [topupAmount, setTopupAmount] = useState("10");
+  const [topupLoading, setTopupLoading] = useState(false);
+  const [topupError, setTopupError] = useState("");
+  const [topupInfo, setTopupInfo] = useState("");
+  const [pendingTopupId, setPendingTopupId] = useState<string | null>(null);
+  const [pendingTopupStatus, setPendingTopupStatus] = useState("none");
+  const [pendingTopupCheckoutUrl, setPendingTopupCheckoutUrl] = useState("");
 
   useEffect(() => {
     if (!user) return;
@@ -169,29 +178,18 @@ const UserProfilePage = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [cropZoom, imageSize.width, imageSize.height]);
 
-  if (loading) {
-    return (
-      <main className="bg-main min-h-[calc(100vh-64px)] border-t border-border px-8 py-8 grid place-items-center">
-        <p className="text-ink-muted">Loading your profile...</p>
-      </main>
-    );
-  }
-
-  if (error) {
-    return (
-      <main className="bg-main min-h-[calc(100vh-64px)] border-t border-border px-8 py-8 grid place-items-center">
-        <p className="text-red-500">{error}</p>
-      </main>
-    );
-  }
-
-  if (!user) return null;
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const stored = String(window.localStorage.getItem(PENDING_TOPUP_STORAGE_KEY) || "").trim();
+    if (!stored) return;
+    setPendingTopupId(stored);
+  }, []);
 
   const displayName =
-    user.display_name ||
-    user.name ||
-    user.username ||
-    (user.email ? user.email.split("@")[0] : "User");
+    user?.display_name ||
+    user?.name ||
+    user?.username ||
+    (user?.email ? user.email.split("@")[0] : "User");
   const rawBalance = user?.balance ?? null;
   const balanceValue =
     rawBalance === null || rawBalance === undefined || Number.isNaN(Number(rawBalance))
@@ -199,84 +197,9 @@ const UserProfilePage = () => {
       : Number(rawBalance);
   const balanceLabel = balanceValue === null ? "--" : `$${balanceValue.toFixed(2)}`;
 
-  const billingSummary = [
-    { label: "Plan", value: user.plan || "Scale", meta: "Billed monthly" },
-    { label: "Next invoice", value: "$79.00", meta: "Apr 10, 2026" },
-    { label: "Billing email", value: user.email || "billing@company.com", meta: "Receipts and invoices" },
-    { label: "Payment status", value: "Active", meta: "Auto-pay on" }
-  ];
-
-  const paymentMethods = [
-    {
-      id: "card",
-      badge: "CC",
-      label: "Card",
-      description: "Visa, Mastercard, Amex",
-      status: "Primary",
-      statusClass: "border-emerald-100 bg-emerald-50 text-emerald-700",
-      detail: "**** 4242 • exp 08/27",
-      actionLabel: "Manage",
-      secondaryLabel: "Edit"
-    },
-    {
-      id: "paypal",
-      badge: "PP",
-      label: "PayPal",
-      description: "Fast checkout with PayPal",
-      status: "Not connected",
-      statusClass: "border-border bg-gray-50 text-ink-muted",
-      detail: "Connect your PayPal account to enable billing.",
-      actionLabel: "Connect"
-    },
-    {
-      id: "payoneer",
-      badge: "PY",
-      label: "Payoneer",
-      description: "Global payouts for teams",
-      status: "Not connected",
-      statusClass: "border-border bg-gray-50 text-ink-muted",
-      detail: "Link Payoneer for international billing.",
-      actionLabel: "Connect"
-    },
-    {
-      id: "crypto",
-      badge: "CR",
-      label: "Cryptocurrency",
-      description: "USDC, USDT, BTC",
-      status: "Wallet not set",
-      statusClass: "border-amber-100 bg-amber-50 text-amber-700",
-      detail: "Add a wallet address to receive invoices.",
-      actionLabel: "Add wallet"
-    }
-  ];
-
-  const invoices = [
-    {
-      id: "INV-2026-021",
-      date: "Feb 1, 2026",
-      amount: "$79.00",
-      status: "Paid",
-      statusClass: "bg-emerald-50 text-emerald-700"
-    },
-    {
-      id: "INV-2026-020",
-      date: "Jan 1, 2026",
-      amount: "$79.00",
-      status: "Paid",
-      statusClass: "bg-emerald-50 text-emerald-700"
-    },
-    {
-      id: "INV-2025-019",
-      date: "Dec 1, 2025",
-      amount: "$79.00",
-      status: "Paid",
-      statusClass: "bg-emerald-50 text-emerald-700"
-    }
-  ];
-
   const handleChange =
     (field: keyof ProfileForm) =>
-    (e: ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
+    (e) => {
       setForm((prev) => ({ ...prev, [field]: e.target.value }));
   };
 
@@ -334,6 +257,100 @@ const UserProfilePage = () => {
       setPasswordError(err.message || "Unable to change password.");
     } finally {
       setPasswordSaving(false);
+    }
+  };
+
+  const loadPendingTopupStatus = useCallback(
+    async (targetTopupId: string, silent = false) => {
+      if (!targetTopupId) return;
+      if (!silent) setTopupLoading(true);
+      try {
+        const data = await billingService.getTopupStatus(targetTopupId);
+        const topup = data?.topup || {};
+        const status = String(topup.payment_status || "unknown").toLowerCase();
+        const checkoutUrl = String(topup.checkout_url || "");
+        const credited = Boolean(topup.credited_at);
+        const terminal = Boolean(topup.is_terminal) || credited;
+
+        setPendingTopupStatus(status);
+        setPendingTopupCheckoutUrl(checkoutUrl);
+
+        if (credited) {
+          setTopupInfo("Payment confirmed. Credits were added to your balance.");
+          if (typeof window !== "undefined") {
+            window.localStorage.removeItem(PENDING_TOPUP_STORAGE_KEY);
+          }
+          setPendingTopupId(null);
+          dispatchUserRefresh();
+          if (typeof reloadUser === "function") {
+            await reloadUser();
+          }
+        } else if (terminal) {
+          setTopupInfo(`Topup ended with status: ${status}.`);
+          if (typeof window !== "undefined") {
+            window.localStorage.removeItem(PENDING_TOPUP_STORAGE_KEY);
+          }
+          setPendingTopupId(null);
+        }
+        setTopupError("");
+      } catch (err) {
+        if (!silent) {
+          setTopupError(err?.message || "Unable to load payment status.");
+        }
+      } finally {
+        if (!silent) setTopupLoading(false);
+      }
+    },
+    [reloadUser]
+  );
+
+  useEffect(() => {
+    if (!pendingTopupId) return;
+    void loadPendingTopupStatus(pendingTopupId);
+    const timer = window.setInterval(() => {
+      void loadPendingTopupStatus(pendingTopupId, true);
+    }, 5000);
+    return () => {
+      window.clearInterval(timer);
+    };
+  }, [loadPendingTopupStatus, pendingTopupId]);
+
+  const handleTopupCheckout = async () => {
+    const amount = Number(topupAmount);
+    const rounded = Math.round(amount * 100) / 100;
+    if (!Number.isFinite(amount) || amount <= 0 || Math.abs(rounded - amount) > 1e-9) {
+      setTopupError("Enter a valid amount with up to 2 decimals.");
+      return;
+    }
+
+    setTopupLoading(true);
+    setTopupError("");
+    setTopupInfo("");
+    try {
+      const data = await billingService.createCheckout(rounded);
+      const topupId = String(data?.topup_id || "").trim();
+      const checkoutUrl = String(data?.checkout_url || "").trim();
+      const status = String(data?.payment_status || "waiting").toLowerCase();
+      if (!topupId || !checkoutUrl) {
+        throw new Error("Provider did not return checkout URL.");
+      }
+
+      if (typeof window !== "undefined") {
+        window.localStorage.setItem(PENDING_TOPUP_STORAGE_KEY, topupId);
+      }
+      setPendingTopupId(topupId);
+      setPendingTopupStatus(status);
+      setPendingTopupCheckoutUrl(checkoutUrl);
+      const popup = window.open(checkoutUrl, "_blank", "noopener,noreferrer");
+      if (!popup) {
+        setTopupInfo("Checkout created. Please allow popups, then open the checkout URL below.");
+      } else {
+        setTopupInfo("Checkout opened in a new tab.");
+      }
+    } catch (err) {
+      setTopupError(err?.message || "Unable to create topup checkout.");
+    } finally {
+      setTopupLoading(false);
     }
   };
 
@@ -475,7 +492,7 @@ const UserProfilePage = () => {
     }
   };
 
-  const handleAvatarChange = async (event: ChangeEvent<HTMLInputElement>) => {
+  const handleAvatarChange = async (event) => {
     const file = event.target.files?.[0];
     if (!file) return;
     setAvatarError("");
@@ -502,6 +519,24 @@ const UserProfilePage = () => {
     const next = Math.max(ZOOM_MIN, Math.min(ZOOM_MAX, cropZoom + delta * step));
     setCropZoom(next);
   };
+
+  if (loading) {
+    return (
+      <main className="bg-main min-h-[calc(100vh-64px)] border-t border-border px-8 py-8 grid place-items-center">
+        <p className="text-ink-muted">Loading your profile...</p>
+      </main>
+    );
+  }
+
+  if (error) {
+    return (
+      <main className="bg-main min-h-[calc(100vh-64px)] border-t border-border px-8 py-8 grid place-items-center">
+        <p className="text-red-500">{error}</p>
+      </main>
+    );
+  }
+
+  if (!user) return null;
 
   return (
     <main className="bg-main min-h-[calc(100vh-64px)] border-t border-border px-8 py-8">
@@ -680,9 +715,77 @@ const UserProfilePage = () => {
               </div>
             </div>
           ) : activeTab === "billing" ? (
-            <div className="rounded-2xl border border-border bg-white p-8">
-              <h2 className="text-2xl font-bold text-ink">Coming Soon.</h2>
-              <p className="mt-3 text-base text-ink-muted">currently plz contact us directly.</p>
+            <div className="grid gap-6">
+              <div className="rounded-2xl border border-border bg-white p-6">
+                <h2 className="text-xl font-bold text-ink">Top up credits</h2>
+                <p className="mt-2 text-sm text-ink-muted">
+                  Network: BEP20 only ({`USDT/BSC`}). Enter amount in USD.
+                </p>
+                <div className="mt-5 flex flex-wrap items-end gap-3">
+                  <div className="w-full max-w-[240px] space-y-2">
+                    <label className={labelClass}>Amount (USD)</label>
+                    <input
+                      type="number"
+                      min="1"
+                      step="0.01"
+                      value={topupAmount}
+                      onChange={(event) => setTopupAmount(event.target.value)}
+                      className={inputClass}
+                      placeholder="10.00"
+                    />
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      void handleTopupCheckout();
+                    }}
+                    disabled={topupLoading}
+                    className="h-11 rounded-xl bg-accent-primary px-5 text-sm font-semibold text-white disabled:opacity-60"
+                  >
+                    {topupLoading ? "Processing..." : "Pay"}
+                  </button>
+                </div>
+                {topupError ? <p className="mt-3 text-sm text-red-500">{topupError}</p> : null}
+                {topupInfo ? <p className="mt-3 text-sm text-emerald-600">{topupInfo}</p> : null}
+              </div>
+
+              <div className="rounded-2xl border border-border bg-white p-6">
+                <h3 className="text-lg font-semibold text-ink">Current topup status</h3>
+                {pendingTopupId ? (
+                  <div className="mt-4 rounded-xl border border-border bg-[#F9FAFB] p-4 text-sm text-ink">
+                    <p>
+                      <span className="text-ink-muted">Topup ID:</span> {pendingTopupId}
+                    </p>
+                    <p className="mt-1">
+                      <span className="text-ink-muted">Status:</span> {pendingTopupStatus}
+                    </p>
+                    {pendingTopupCheckoutUrl ? (
+                      <div className="mt-3 flex flex-wrap gap-2">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            window.open(pendingTopupCheckoutUrl, "_blank", "noopener,noreferrer");
+                          }}
+                          className="h-9 rounded-lg border border-border px-3 text-xs font-semibold text-ink"
+                        >
+                          Re-open checkout
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            void loadPendingTopupStatus(pendingTopupId);
+                          }}
+                          className="h-9 rounded-lg border border-border px-3 text-xs font-semibold text-ink"
+                        >
+                          Refresh status
+                        </button>
+                      </div>
+                    ) : null}
+                  </div>
+                ) : (
+                  <p className="mt-3 text-sm text-ink-muted">No pending topup.</p>
+                )}
+              </div>
             </div>
           ) : (
             <div className="rounded-2xl border border-border bg-white p-6 text-sm text-ink-muted">
@@ -783,4 +886,5 @@ const UserProfilePage = () => {
 };
 
 export default UserProfilePage;
+
 

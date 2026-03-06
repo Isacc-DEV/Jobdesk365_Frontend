@@ -1,6 +1,7 @@
 /* global fetch */
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { API_BASE, TOKEN_KEY } from "../config";
+import { USER_REFRESH_EVENT } from "../services/billingService";
 
 export const useUser = (options = {}) => {
   const { enabled = true, redirectOnUnauthorized = true } = options;
@@ -11,65 +12,89 @@ export const useUser = (options = {}) => {
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
 
-  useEffect(() => {
+  const normalizeUser = useCallback((parsedUser) => {
+    const roles = Array.isArray(parsedUser?.roles) ? parsedUser.roles : [];
+    const badges = Array.isArray(parsedUser?.badges) ? parsedUser.badges : [];
+    const hasManagerBadge =
+      roles.includes("worker") && badges.some((badge) => String(badge || "").toLowerCase() === "manager");
+    return hasManagerBadge && !roles.includes("manager")
+      ? { ...parsedUser, roles: [...roles, "manager"] }
+      : parsedUser;
+  }, []);
+
+  const reloadUser = useCallback(async () => {
     if (!enabled) {
       setLoading(false);
       setError("");
-      return;
+      return null;
     }
 
     const token = typeof window !== "undefined" ? window.localStorage.getItem(TOKEN_KEY) : null;
     if (!token) {
       setLoading(false);
       setError("Missing token");
-      return;
+      return null;
     }
-    const fetchUser = async () => {
-      setLoading(true);
-      try {
-        const res = await fetch(`${API_BASE}/auth/me`, {
-          headers: { Authorization: `Bearer ${token}` }
-        });
-        if (res.status === 401 && redirectOnUnauthorized) {
-          window.location.href = "/auth";
-          return;
-        }
-        if (!res.ok) {
-          let message = "Unable to load profile.";
-          try {
-            const data = await res.json();
-            if (data?.error === "worker_not_verified") {
-              message = workerBlockMessage;
-            } else if (data?.error === "account_blocked") {
-              message = accountBlockedMessage;
-            } else {
-              message = data?.message || data?.error || message;
-            }
-          } catch {
-            message = (await res.text()) || message;
-          }
-          throw new Error(message);
-        }
-        const data = await res.json();
-        const parsedUser = data?.user ?? data;
-        const roles = Array.isArray(parsedUser?.roles) ? parsedUser.roles : [];
-        const badges = Array.isArray(parsedUser?.badges) ? parsedUser.badges : [];
-        const hasManagerBadge =
-          roles.includes("worker") && badges.some((badge) => String(badge || "").toLowerCase() === "manager");
-        const nextUser =
-          hasManagerBadge && !roles.includes("manager")
-            ? { ...parsedUser, roles: [...roles, "manager"] }
-            : parsedUser;
-        setUser(nextUser);
-      } catch (err) {
-        setUser(null);
-        setError(err.message || "Unable to load profile.");
-      } finally {
-        setLoading(false);
+    setLoading(true);
+    try {
+      const res = await fetch(`${API_BASE}/auth/me`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      if (res.status === 401 && redirectOnUnauthorized) {
+        window.location.href = "/auth";
+        return null;
       }
+      if (!res.ok) {
+        let message = "Unable to load profile.";
+        try {
+          const data = await res.json();
+          if (data?.error === "worker_not_verified") {
+            message = workerBlockMessage;
+          } else if (data?.error === "account_blocked") {
+            message = accountBlockedMessage;
+          } else {
+            message = data?.message || data?.error || message;
+          }
+        } catch {
+          message = (await res.text()) || message;
+        }
+        throw new Error(message);
+      }
+      const data = await res.json();
+      const parsedUser = data?.user ?? data;
+      const nextUser = normalizeUser(parsedUser);
+      setUser(nextUser);
+      setError("");
+      return nextUser;
+    } catch (err) {
+      setUser(null);
+      setError(err.message || "Unable to load profile.");
+      return null;
+    } finally {
+      setLoading(false);
+    }
+  }, [
+    accountBlockedMessage,
+    enabled,
+    normalizeUser,
+    redirectOnUnauthorized,
+    workerBlockMessage
+  ]);
+
+  useEffect(() => {
+    void reloadUser();
+  }, [reloadUser]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const handleRefresh = () => {
+      void reloadUser();
     };
-    fetchUser();
-  }, [enabled, redirectOnUnauthorized]);
+    window.addEventListener(USER_REFRESH_EVENT, handleRefresh);
+    return () => {
+      window.removeEventListener(USER_REFRESH_EVENT, handleRefresh);
+    };
+  }, [reloadUser]);
 
   const updateUser = async (partial) => {
     const token = typeof window !== "undefined" ? window.localStorage.getItem(TOKEN_KEY) : null;
@@ -97,14 +122,7 @@ export const useUser = (options = {}) => {
       }
       const updated = await res.json();
       const parsedUser = updated?.user ?? updated;
-      const roles = Array.isArray(parsedUser?.roles) ? parsedUser.roles : [];
-      const badges = Array.isArray(parsedUser?.badges) ? parsedUser.badges : [];
-      const hasManagerBadge =
-        roles.includes("worker") && badges.some((badge) => String(badge || "").toLowerCase() === "manager");
-      const nextUser =
-        hasManagerBadge && !roles.includes("manager")
-          ? { ...parsedUser, roles: [...roles, "manager"] }
-          : parsedUser;
+      const nextUser = normalizeUser(parsedUser);
       setUser(nextUser);
       setError("");
       return nextUser;
@@ -116,5 +134,5 @@ export const useUser = (options = {}) => {
     }
   };
 
-  return { user, loading, error, saving, updateUser };
+  return { user, loading, error, saving, updateUser, reloadUser };
 };

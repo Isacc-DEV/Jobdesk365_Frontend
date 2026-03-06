@@ -16,6 +16,7 @@ import UsersResumeTemplatesPage from "./ResumeTemplatesPage";
 import UsersSettingsPage from "./SettingsPage";
 import UsersTalentsPage from "./TalentsPage";
 import UsersUserProfilePage from "./UserProfilePage";
+import PaymentReturnPage from "../../components/user/PaymentReturnPage";
 
 type UsersRoutesProps = {
   route: string;
@@ -53,6 +54,8 @@ const UsersRoutes = ({ route, userLoading, navigate }: UsersRoutesProps) => {
   if (section === "calendar") return <UsersCalendarPage />;
   if (section === "requests") return <UsersRequestsPage />;
 
+  if (route.startsWith("/payment-success")) return <PaymentReturnPage />;
+  if (route.startsWith("/payment-cancel")) return <PaymentReturnPage />;
   if (route.startsWith("/user")) return <UsersUserProfilePage />;
   if (route.startsWith("/settings")) return <UsersSettingsPage />;
   if (route.startsWith("/resume-generator")) return <UsersResumeGeneratorPage />;
@@ -65,4 +68,3 @@ const UsersRoutes = ({ route, userLoading, navigate }: UsersRoutesProps) => {
 };
 
 export default UsersRoutes;
-

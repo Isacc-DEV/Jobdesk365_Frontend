@@ -18,6 +18,7 @@ import AdminResumeTemplatesPage from "./ResumeTemplatesPage";
 import AdminSettingsPage from "./SettingsPage";
 import AdminTalentsPage from "./TalentsPage";
 import AdminUserProfilePage from "./UserProfilePage";
+import PaymentReturnPage from "../../components/user/PaymentReturnPage";
 
 type AdminRoutesProps = {
   route: string;
@@ -59,6 +60,8 @@ const AdminRoutes = ({ route, userLoading, navigate }: AdminRoutesProps) => {
   if (section === "calendar") return <AdminCalendarPage />;
   if (section === "requests") return <AdminRequestsPage />;
 
+  if (route.startsWith("/payment-success")) return <PaymentReturnPage />;
+  if (route.startsWith("/payment-cancel")) return <PaymentReturnPage />;
   if (route.startsWith("/user")) return <AdminUserProfilePage />;
   if (route.startsWith("/settings")) return <AdminSettingsPage />;
   if (route.startsWith("/resume-generator")) return <AdminResumeGeneratorPage />;

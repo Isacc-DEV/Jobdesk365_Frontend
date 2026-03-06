@@ -16,6 +16,7 @@ import ManagersResumeTemplatesPage from "./ResumeTemplatesPage";
 import ManagersSettingsPage from "./SettingsPage";
 import ManagersTalentsPage from "./TalentsPage";
 import ManagersUserProfilePage from "./UserProfilePage";
+import PaymentReturnPage from "../../components/user/PaymentReturnPage";
 
 type ManagersRoutesProps = {
   route: string;
@@ -53,6 +54,8 @@ const ManagersRoutes = ({ route, userLoading, navigate }: ManagersRoutesProps) =
   if (section === "calendar") return <ManagersCalendarPage />;
   if (section === "requests") return <ManagersRequestsPage />;
 
+  if (route.startsWith("/payment-success")) return <PaymentReturnPage />;
+  if (route.startsWith("/payment-cancel")) return <PaymentReturnPage />;
   if (route.startsWith("/user")) return <ManagersUserProfilePage />;
   if (route.startsWith("/settings")) return <ManagersSettingsPage />;
   if (route.startsWith("/resume-generator")) return <ManagersResumeGeneratorPage />;
@@ -65,4 +68,3 @@ const ManagersRoutes = ({ route, userLoading, navigate }: ManagersRoutesProps) =
 };
 
 export default ManagersRoutes;
-
