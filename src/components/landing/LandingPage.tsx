@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import Image from "next/image";
 import {
   ArrowRight,
   BarChart3,
@@ -201,7 +202,14 @@ const LandingPage = ({ onNavigate }: LandingPageProps) => {
       <header className="sticky top-0 z-30 border-b border-border/70 bg-page/80 backdrop-blur">
         <nav className="mx-auto flex w-full max-w-[1200px] items-center justify-between px-6 py-4">
           <div className="flex items-center">
-            <img src="/images/logo.png" alt="JobDesk365" className="h-9 w-auto object-contain" />
+            <Image
+              src="/images/logo.png"
+              alt="JobDesk365"
+              width={157}
+              height={36}
+              priority
+              className="h-9 w-auto object-contain"
+            />
           </div>
           <div className="hidden items-center gap-6 text-sm text-ink-muted md:flex">
             <button type="button" onClick={() => handleNavigate("/dashboard")} className="hover:text-ink">
@@ -223,11 +231,14 @@ const LandingPage = ({ onNavigate }: LandingPageProps) => {
                 aria-expanded={menuOpen}
                 className="flex items-center gap-1.5 rounded-full border border-border-soft bg-white/90 px-2 py-1 text-ink transition duration-150 ease-out hover:border-ink-muted hover:-translate-y-[1px] hover:shadow-soft focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent-primary"
               >
-                <div className="h-8 w-8 rounded-full border border-border bg-accent-primary/10 text-accent-primary grid place-items-center overflow-hidden">
+                <div className="relative h-8 w-8 rounded-full border border-border bg-accent-primary/10 text-accent-primary grid place-items-center overflow-hidden">
                   {avatarUrl && !avatarFailed ? (
-                    <img
+                    <Image
                       src={avatarUrl}
                       alt={displayName}
+                      fill
+                      priority
+                      unoptimized
                       className="h-full w-full object-cover"
                       onError={() => setAvatarFailed(true)}
                     />
@@ -324,7 +335,14 @@ const LandingPage = ({ onNavigate }: LandingPageProps) => {
                   helping you move faster with less stress.
                 </p>
 
-                <img src="/images/0001.png" className="mt-2 w-full" />
+                <Image
+                  src="/images/0001.png"
+                  alt="JobDesk365 product preview"
+                  width={1200}
+                  height={700}
+                  priority
+                  className="mt-2 h-auto w-full"
+                />
               </div>
 
               <div className="mt-12">
@@ -343,7 +361,14 @@ const LandingPage = ({ onNavigate }: LandingPageProps) => {
               return (
                 <div className="rounded-3xl border border-border overflow-hidden" key={feature.title}>
                   <div>
-                    <img src={`images/${feature.url}.png`} className="w-full" />
+                    <Image
+                      src={`/images/${feature.url}.png`}
+                      alt={feature.title}
+                      width={1200}
+                      height={700}
+                      priority
+                      className="h-auto w-full"
+                    />
                   </div>
                   <div key={feature.title} className=" bg-white p-6 shadow-soft">
                     <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-accent-primary/10 text-accent-primary">
@@ -436,7 +461,14 @@ const LandingPage = ({ onNavigate }: LandingPageProps) => {
       <footer className="border-t border-border bg-white">
         <div className="mx-auto flex w-full max-w-[1200px] flex-col gap-6 px-6 py-10 md:flex-row md:items-center md:justify-between">
           <div className="flex flex-col gap-2">
-            <img src="/images/logo.png" alt="JobDesk365" className="h-9 w-fit object-contain" />
+            <Image
+              src="/images/logo.png"
+              alt="JobDesk365"
+              width={157}
+              height={36}
+              priority
+              className="h-9 w-fit object-contain"
+            />
             <p className="text-xs text-ink-muted">Hiring teams, calmer days.</p>
           </div>
           <div className="flex flex-wrap items-center gap-4 text-xs text-ink-muted">

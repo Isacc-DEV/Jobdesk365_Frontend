@@ -1,4 +1,5 @@
 ﻿import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import Image from "next/image";
 import {
   AtSign,
   Bold,
@@ -849,9 +850,12 @@ const MessageInput = ({
                         <div className="flex items-center gap-2">
                           <div className="relative h-8 w-8 shrink-0">
                             {option.avatarUrl ? (
-                              <img
+                              <Image
                                 src={option.avatarUrl}
                                 alt={option.label}
+                                fill
+                                priority
+                                unoptimized
                                 className="h-8 w-8 rounded-full object-cover"
                               />
                             ) : (
@@ -2070,9 +2074,12 @@ const ChatPage = () => {
                         <div className="flex min-w-0 items-center gap-3">
                           <div className="relative">
                             {person.avatarUrl ? (
-                              <img
+                              <Image
                                 src={person.avatarUrl}
                                 alt={person.primaryLabel}
+                                fill
+                                priority
+                                unoptimized
                                 className="h-8 w-8 rounded-full object-cover"
                               />
                             ) : (
@@ -2210,9 +2217,12 @@ const ChatPage = () => {
                         <div key={message.id} className="group flex gap-3 max-w-[720px]">
                           <div className="relative mt-1 h-8 w-8 shrink-0">
                             {sender?.photo_link ? (
-                              <img
+                              <Image
                                 src={sender.photo_link}
                                 alt={senderName}
+                                fill
+                                priority
+                                unoptimized
                                 className="h-8 w-8 rounded-full object-cover"
                               />
                             ) : (
@@ -2281,9 +2291,12 @@ const ChatPage = () => {
                   <div className="flex items-center gap-3">
                     <div className="relative">
                       {dmPartner?.avatarUrl ? (
-                        <img
+                        <Image
                           src={dmPartner.avatarUrl}
                           alt={dmPartner.primaryLabel}
+                          fill
+                          priority
+                          unoptimized
                           className="h-12 w-12 rounded-full object-cover"
                         />
                       ) : (
@@ -2320,9 +2333,12 @@ const ChatPage = () => {
                       <div key={message.id} className="group flex gap-3 max-w-[720px]">
                         <div className="relative mt-1 h-8 w-8 shrink-0">
                           {sender?.photo_link ? (
-                            <img
+                            <Image
                               src={sender.photo_link}
                               alt={senderName}
+                              fill
+                              priority
+                              unoptimized
                               className="h-8 w-8 rounded-full object-cover"
                             />
                           ) : (
@@ -2592,5 +2608,7 @@ const ChatPage = () => {
 };
 
 export default ChatPage;
+
+
 
 

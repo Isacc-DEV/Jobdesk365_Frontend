@@ -1,5 +1,6 @@
-/* global fetch, Image, URL, File, Blob, FormData */
+/* global fetch, URL, File, Blob, FormData */
 import { useState, useEffect, useCallback } from "react";
+import Image from "next/image";
 import { useUser } from "../../hooks/useUser";
 import { API_BASE, BACKEND_ORIGIN, TOKEN_KEY } from "../../config";
 import { billingService, dispatchUserRefresh } from "../../services/billingService";
@@ -566,10 +567,13 @@ const UserProfilePage = () => {
             <div className="flex items-center gap-4">
               <div className="relative">
                 {avatarSrc ? (
-                  <div className="w-[72px] h-[72px] rounded-full overflow-hidden border border-border bg-white">
-                    <img
+                  <div className="relative w-[72px] h-[72px] rounded-full overflow-hidden border border-border bg-white">
+                    <Image
                       src={avatarSrc}
                       alt={displayName}
+                      fill
+                      priority
+                      unoptimized
                       className="w-full h-full object-cover object-center"
                       onError={() => {
                         setAvatarSrc("");
@@ -812,9 +816,13 @@ const UserProfilePage = () => {
                 onWheel={handleWheelZoom}
               >
                 {cropPreview ? (
-                  <img
+                  <Image
                     src={cropPreview}
                     alt="Avatar preview"
+                    width={Math.max(1, imageSize.width)}
+                    height={Math.max(1, imageSize.height)}
+                    priority
+                    unoptimized
                     className="absolute select-none pointer-events-none"
                     style={{
                       width: imageSize.width ? `${imageSize.width * getBaseScale()}px` : "auto",

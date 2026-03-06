@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import Image from "next/image";
 import { ChevronDown, LogOut, Settings, User } from "lucide-react";
 import SearchBar from "../common/SearchBar";
 import Logo from "./Logo";
@@ -122,11 +123,14 @@ const Header = ({
             aria-expanded={menuOpen}
             className="flex items-center gap-1.5 rounded-xl border border-border-soft bg-main px-2 py-1 text-ink transition duration-150 ease-out hover:border-ink-muted hover:-translate-y-[1px] hover:shadow-soft focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent-primary"
           >
-            <div className="h-7 w-7 rounded-full border border-border bg-accent-primary/10 text-accent-primary grid place-items-center overflow-hidden">
+            <div className="relative h-7 w-7 rounded-full border border-border bg-accent-primary/10 text-accent-primary grid place-items-center overflow-hidden">
               {avatarUrl && !avatarFailed ? (
-                <img
+                <Image
                   src={avatarUrl}
                   alt={displayName}
+                  fill
+                  priority
+                  unoptimized
                   className="h-full w-full object-cover"
                   onError={() => setAvatarFailed(true)}
                 />

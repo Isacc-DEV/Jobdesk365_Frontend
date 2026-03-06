@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
+import Image from "next/image";
 import { RefreshCw } from "lucide-react";
 import { requestsService } from "../../services/requestsService";
 import { useUser } from "../../hooks/useUser";
@@ -47,9 +48,12 @@ const TalentCard = ({ talent, canEditOwnCard, canAdminAdjust, onEditOwn, onAdjus
     <div className="flex h-72 flex-col overflow-hidden rounded-2xl border border-border bg-white shadow-sm">
       <div className="relative h-1/2 w-full bg-gray-50">
         {imageUrl ? (
-          <img
+          <Image
             src={imageUrl}
             alt={name}
+            fill
+            priority
+            unoptimized
             className="h-full w-full object-cover"
           />
         ) : (

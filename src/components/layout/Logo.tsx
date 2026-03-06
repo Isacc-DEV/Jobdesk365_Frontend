@@ -1,3 +1,5 @@
+import Image from "next/image";
+
 type LogoProps = {
   onNavigate?: (path: string) => void;
   href?: string;
@@ -22,7 +24,14 @@ const Logo = ({ onNavigate, href = "/" }: LogoProps) => {
       className="inline-flex items-center justify-center p-0"
       aria-label="JobDesk365"
     >
-      <img src="/images/logo.png" alt="JobDesk365" className="h-8 w-auto object-contain" />
+      <Image
+        src="/images/logo.png"
+        alt="JobDesk365"
+        width={140}
+        height={32}
+        priority
+        className="h-8 w-auto object-contain"
+      />
     </button>
   );
 };
