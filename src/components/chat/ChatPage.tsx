@@ -1763,9 +1763,7 @@ const ChatPage = () => {
     if (!isEmployee || !token) return;
     if (socketRef.current) return;
 
-    const wsBase = API_BASE
-      ? API_BASE.replace(/^http/, "ws")
-      : `${window.location.origin.replace(/^http/, "ws")}`;
+    const wsBase = API_BASE.replace(/^http/, "ws");
 
     const socket = new WebSocket(`${wsBase}/chat/ws?token=${encodeURIComponent(token)}`);
     socketRef.current = socket;

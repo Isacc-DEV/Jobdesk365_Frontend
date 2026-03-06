@@ -34,9 +34,7 @@ const resolveTalentImageUrl = (value) => {
   const trimmed = String(value).trim();
   if (!trimmed) return "";
   if (/^https?:\/\//i.test(trimmed)) return trimmed;
-  const base =
-    BACKEND_ORIGIN ||
-    (typeof window !== "undefined" ? window.location.origin : "");
+  const base = BACKEND_ORIGIN;
   if (!base) return trimmed.startsWith("/") ? trimmed : `/${trimmed}`;
   return trimmed.startsWith("/") ? `${base}${trimmed}` : `${base}/${trimmed}`;
 };

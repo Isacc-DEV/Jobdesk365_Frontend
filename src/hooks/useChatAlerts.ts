@@ -282,9 +282,7 @@ export const useChatAlerts = ({
     };
 
     const buildWsUrl = () => {
-      const wsBase = API_BASE
-        ? API_BASE.replace(/^http/i, "ws")
-        : `${window.location.origin.replace(/^http/i, "ws")}`;
+      const wsBase = API_BASE.replace(/^http/i, "ws");
       return `${wsBase}/chat/ws?token=${encodeURIComponent(token)}`;
     };
 

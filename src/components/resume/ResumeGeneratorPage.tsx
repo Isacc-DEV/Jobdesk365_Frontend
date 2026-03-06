@@ -177,7 +177,10 @@ const getPdfFilenameFromHeader = (header: string | null) => {
 
 const exportHtmlAsPdf = async (html: string, title: string) => {
   const token = typeof window !== "undefined" ? window.localStorage.getItem(TOKEN_KEY) : null;
-  const base = API_BASE || (typeof window !== "undefined" ? window.location.origin : "");
+  const base = API_BASE;
+  if (!base) {
+    throw new Error("API base URL is not configured.");
+  }
   const url = new URL("/templates/render-pdf", base).toString();
   const fileName = sanitizeFileName(title || "Resume");
 

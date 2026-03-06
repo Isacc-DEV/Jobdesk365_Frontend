@@ -78,9 +78,7 @@ const LiveChatCard = ({ initiallyOpen = false }: LiveChatCardProps) => {
 
   const connectSocket = (activeThreadId: string, activeGuestId: string) => {
     if (!activeThreadId || socketRef.current) return;
-    const wsBase = API_BASE
-      ? API_BASE.replace(/^http/, "ws")
-      : `${window.location.origin.replace(/^http/, "ws")}`;
+    const wsBase = API_BASE.replace(/^http/, "ws");
     const query = token
       ? `token=${encodeURIComponent(token)}`
       : `guest_id=${encodeURIComponent(activeGuestId || "")}`;
