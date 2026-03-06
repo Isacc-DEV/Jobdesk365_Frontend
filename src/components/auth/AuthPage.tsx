@@ -1,5 +1,5 @@
 /* global fetch */
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { API_BASE, TOKEN_KEY } from "../../config";
 import BrandPanel from "./BrandPanel";
 import AuthCard from "./AuthCard";
@@ -18,9 +18,20 @@ const AuthPage = () => {
   const [usernameError, setUsernameError] = useState("");
   const [formError, setFormError] = useState("");
   const [loading, setLoading] = useState(false);
+  const [pendingVerificationEmail, setPendingVerificationEmail] = useState("");
+  const [resendCooldown, setResendCooldown] = useState(0);
   const isSignIn = mode === "signin";
+  const isVerificationPending = mode === "verify-pending";
 
   const backendBase = API_BASE || "";
+
+  useEffect(() => {
+    if (resendCooldown <= 0) return undefined;
+    const timer = window.setInterval(() => {
+      setResendCooldown((prev) => (prev > 0 ? prev - 1 : 0));
+    }, 1000);
+    return () => window.clearInterval(timer);
+  }, [resendCooldown]);
 
   const resetErrors = () => {
     setUsernameError("");
@@ -31,6 +42,37 @@ const AuthPage = () => {
     if (token) {
       window.localStorage.setItem(TOKEN_KEY, token);
       window.location.href = "/dashboard";
+    }
+  };
+
+  const startResendCooldown = () => {
+    setResendCooldown(60);
+  };
+
+  const handleResendVerification = async () => {
+    const targetEmail = (pendingVerificationEmail || email || "").trim().toLowerCase();
+    if (!targetEmail) {
+      setFormError("Email is required.");
+      return;
+    }
+    if (resendCooldown > 0) return;
+    setLoading(true);
+    setFormError("");
+    try {
+      const res = await fetch(`${backendBase}/auth/email-verification/resend`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: targetEmail })
+      });
+      if (!res.ok) {
+        throw new Error("Unable to resend verification email.");
+      }
+      setPendingVerificationEmail(targetEmail);
+      startResendCooldown();
+    } catch (err) {
+      setFormError(err?.message || "Unable to resend verification email.");
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -57,6 +99,10 @@ const AuthPage = () => {
           }
           if (data?.error === "account_blocked") {
             msg = blockedMessage;
+          }
+          if (data?.error === "email_not_verified") {
+            setPendingVerificationEmail(email.trim().toLowerCase());
+            setMode("verify-pending");
           }
         } catch {
           const text = await res.text();
@@ -98,14 +144,31 @@ const AuthPage = () => {
         const res = await fetch(`${backendBase}/auth/register`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ email, username, password, is_internal_user: isInternalUser })
+          body: JSON.stringify({
+            email,
+            username,
+            password,
+            is_internal_user: isInternalUser
+          })
         });
+        let data = null;
+        try {
+          data = await res.json();
+        } catch {
+          data = null;
+        }
         if (!res.ok) {
-          const msg = (await res.text()) || "Unable to create account.";
+          const msg = data?.message || data?.error || "Unable to create account.";
           throw new Error(msg);
         }
-        const data = await res.json();
-        storeTokenAndGo(data.token);
+        if (data?.status === "verification_required") {
+          setPendingVerificationEmail(String(data.email || email).trim().toLowerCase());
+          setMode("verify-pending");
+          startResendCooldown();
+          setFormError("");
+          return;
+        }
+        storeTokenAndGo(data?.token);
       } catch (err) {
         setFormError(err.message || "Unable to create account.");
       } finally {
@@ -122,7 +185,7 @@ const AuthPage = () => {
         {isSignIn ? (
           <AuthCard
             title="Sign in"
-            subtitle="Welcome back — sign in to continue."
+            subtitle="Welcome back - sign in to continue."
             footer={
               <div className="flex items-center gap-1">
                 <span>New here?</span>
@@ -150,7 +213,7 @@ const AuthPage = () => {
             <InputField
               label="Password"
               type="password"
-              placeholder="••••••••"
+              placeholder="********"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               error={formError && !password ? "Password is required" : ""}
@@ -176,6 +239,36 @@ const AuthPage = () => {
             </div>
             <button className="w-full h-12 rounded-xl border border-border bg-white font-semibold text-ink">
               Continue with Google
+            </button>
+          </AuthCard>
+        ) : isVerificationPending ? (
+          <AuthCard
+            title="Verify your email"
+            subtitle="A verification link has been sent. Open it to activate your account."
+            footer={
+              <button
+                type="button"
+                className="text-accent-primary font-semibold"
+                onClick={() => {
+                  resetErrors();
+                  setMode("signin");
+                }}
+              >
+                Back to sign in
+              </button>
+            }
+          >
+            <p className="text-sm text-ink-muted">
+              Email: <span className="font-semibold text-ink">{pendingVerificationEmail || email}</span>
+            </p>
+            {formError ? <p className="text-sm text-red-500">{formError}</p> : null}
+            <button
+              type="button"
+              className="w-full h-12 rounded-xl bg-accent-primary text-white font-bold disabled:opacity-60"
+              onClick={handleResendVerification}
+              disabled={loading || resendCooldown > 0}
+            >
+              {resendCooldown > 0 ? `Resend in ${resendCooldown}s` : "Resend verification email"}
             </button>
           </AuthCard>
         ) : (
@@ -215,14 +308,14 @@ const AuthPage = () => {
             <InputField
               label="Password"
               type="password"
-              placeholder="••••••••"
+              placeholder="********"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
             />
             <InputField
               label="Confirm password"
               type="password"
-              placeholder="••••••••"
+              placeholder="********"
               value={confirmPassword}
               onChange={(e) => setConfirmPassword(e.target.value)}
             />

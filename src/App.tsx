@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import AuthPage from "./components/auth/AuthPage";
+import EmailVerifyPage from "./components/auth/EmailVerifyPage";
 import LiveChatCard from "./components/chat/LiveChatCard";
 import LandingPage from "./components/landing/LandingPage";
 import { TOKEN_KEY } from "./config";
@@ -94,7 +95,7 @@ const App = () => {
   if (isAuthRoute) {
     return (
       <>
-        <AuthPage />
+        {route.startsWith("/auth/verify") ? <EmailVerifyPage /> : <AuthPage />}
         {showLiveChat ? <LiveChatCard /> : null}
       </>
     );
